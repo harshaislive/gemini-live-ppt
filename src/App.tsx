@@ -45,6 +45,11 @@ const VOICE_OPTIONS = ['Zephyr', 'Sulafat', 'Algieba', 'Schedar', 'Achird', 'Kor
 function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [connectionError, setConnectionError] = useState('');
+  const [authEnabled, setAuthEnabled] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [passcode, setPasscode] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [isActivated, setIsActivated] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [isNarrating, setIsNarrating] = useState(false);
@@ -327,6 +332,28 @@ function App() {
 
     async function bootstrap() {
       try {
+        const authResponse = await fetch('/api/auth/status');
+        if (!authResponse.ok) {
+          throw new Error('Auth status request failed.');
+        }
+
+        const auth = (await authResponse.json()) as {
+          authenticated: boolean;
+          enabled: boolean;
+        };
+
+        if (disposed) {
+          return;
+        }
+
+        setAuthEnabled(auth.enabled);
+        setIsAuthenticated(auth.authenticated || !auth.enabled);
+
+        if (auth.enabled && !auth.authenticated) {
+          setConnectionState('ready');
+          return;
+        }
+
         await openLiveSession(selectedVoiceRef.current, { loadPresentation: true });
       } catch (error) {
         if (disposed) {
@@ -349,6 +376,34 @@ function App() {
       playerRef.current?.dispose().catch(() => undefined);
     };
   }, []);
+
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setIsAuthorizing(true);
+    setAuthError('');
+
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ passcode }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Invalid passcode.');
+      }
+
+      setIsAuthenticated(true);
+      setPasscode('');
+      setConnectionState('connecting');
+      await openLiveSession(selectedVoiceRef.current, { loadPresentation: true });
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Unable to unlock.');
+      setConnectionState('ready');
+    } finally {
+      setIsAuthorizing(false);
+    }
+  }
 
   useEffect(() => {
     if (!isActivated || connectionState !== 'ready' || !currentSlide || !sessionRef.current) {
@@ -677,6 +732,41 @@ function App() {
       : connectionState === 'connecting'
         ? 'Connecting'
         : 'Offline';
+
+  if (authEnabled && !isAuthenticated) {
+    return (
+      <main className="shell auth-shell">
+        <div className="ambient ambient-a" />
+        <div className="ambient ambient-b" />
+
+        <section className="auth-card">
+          <p className="eyebrow">Beforest Access</p>
+          <h1 className="auth-title">Enter passcode</h1>
+          <p className="auth-copy">
+            This presentation is protected. Enter the passcode to unlock the live guide.
+          </p>
+
+          <form className="auth-form" onSubmit={(event) => void handleLogin(event)}>
+            <label htmlFor="passcode">Passcode</label>
+            <input
+              id="passcode"
+              type="password"
+              value={passcode}
+              onChange={(event) => setPasscode(event.target.value)}
+              placeholder="Enter passcode"
+              autoComplete="current-password"
+            />
+            <button type="submit" className="continue-button cta-button" disabled={isAuthorizing || !passcode.trim()}>
+              <span>{isAuthorizing ? 'Unlocking...' : 'Unlock presentation'}</span>
+              <ArrowUpRight size={18} />
+            </button>
+          </form>
+
+          {authError ? <p className="auth-error">{authError}</p> : null}
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="shell">

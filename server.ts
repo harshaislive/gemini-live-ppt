@@ -1,5 +1,7 @@
 import 'dotenv/config';
 import path from 'node:path';
+import crypto from 'node:crypto';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import express from 'express';
 import { GoogleGenAI, Modality } from '@google/genai';
@@ -9,9 +11,11 @@ const app = express();
 const port = Number(process.env.PORT ?? 3001);
 const model = 'gemini-3.1-flash-live-preview';
 const isProduction = process.env.NODE_ENV === 'production';
+const authCookieName = 'beforest_auth';
 
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
 
 function buildPresentationSystemInstruction() {
   const slideOutline = presentationSlides
@@ -57,6 +61,35 @@ function requireApiKey() {
   return apiKey;
 }
 
+function requirePasscode() {
+  const passcode = process.env.APP_PASSCODE;
+  if (!passcode) {
+    throw new Error('Missing APP_PASSCODE in environment.');
+  }
+  return passcode;
+}
+
+function createAuthToken(passcode: string) {
+  return crypto.createHash('sha256').update(passcode).digest('hex');
+}
+
+function isAuthenticated(req: express.Request) {
+  const passcode = process.env.APP_PASSCODE;
+  if (!passcode) {
+    return true;
+  }
+
+  return req.cookies?.[authCookieName] === createAuthToken(passcode);
+}
+
+function authRequired(req: express.Request, res: express.Response, next: express.NextFunction) {
+  if (isAuthenticated(req)) {
+    return next();
+  }
+
+  return res.status(401).json({ error: 'Unauthorized.' });
+}
+
 function createServerAi() {
   return new GoogleGenAI({
     apiKey: requireApiKey(),
@@ -64,7 +97,48 @@ function createServerAi() {
   });
 }
 
-app.get('/api/live-token', async (_req, res) => {
+app.get('/api/auth/status', (req, res) => {
+  res.json({
+    authenticated: isAuthenticated(req),
+    enabled: Boolean(process.env.APP_PASSCODE),
+  });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const expectedPasscode = requirePasscode();
+    const providedPasscode =
+      typeof req.body?.passcode === 'string' ? req.body.passcode.trim() : '';
+
+    if (!providedPasscode || providedPasscode !== expectedPasscode) {
+      return res.status(401).json({ error: 'Invalid passcode.' });
+    }
+
+    res.cookie(authCookieName, createAuthToken(expectedPasscode), {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: isProduction,
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+    });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to login.';
+    return res.status(500).json({ error: message });
+  }
+});
+
+app.post('/api/auth/logout', (_req, res) => {
+  res.clearCookie(authCookieName, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: isProduction,
+  });
+
+  res.json({ ok: true });
+});
+
+app.get('/api/live-token', authRequired, async (_req, res) => {
   try {
     const ai = createServerAi();
     const expireTime = new Date(Date.now() + 30 * 60 * 1000).toISOString();
@@ -112,14 +186,14 @@ app.get('/api/live-token', async (_req, res) => {
   }
 });
 
-app.get('/api/presentation', (_req, res) => {
+app.get('/api/presentation', authRequired, (_req, res) => {
   res.json({
     title: presentationTitle,
     slides: presentationSlides,
   });
 });
 
-app.post('/api/question-route', async (req, res) => {
+app.post('/api/question-route', authRequired, async (req, res) => {
   try {
     const question = typeof req.body?.question === 'string' ? req.body.question.trim() : '';
     const currentSlideId =
@@ -217,7 +291,7 @@ function safeParseJson<T>(value: string): T | null {
   }
 }
 
-app.post('/api/compose', async (req, res) => {
+app.post('/api/compose', authRequired, async (req, res) => {
   try {
     const prompt = typeof req.body?.prompt === 'string' ? req.body.prompt.trim() : '';
     if (!prompt) {

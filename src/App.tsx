@@ -74,7 +74,6 @@ function App() {
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [isActivated, setIsActivated] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
-  const [isNarrating, setIsNarrating] = useState(false);
   const [isSwitchingVoice, setIsSwitchingVoice] = useState(false);
   const [presentationTitle, setPresentationTitle] = useState('The 10% Life');
   const [slides, setSlides] = useState<PresentationSlide[]>([]);
@@ -182,7 +181,6 @@ function App() {
     playerRef.current?.reset();
     clearTranscriptQueue();
     clearAutoAdvance();
-    setIsNarrating(false);
     currentTurnKindRef.current = null;
   }
 
@@ -486,7 +484,6 @@ function App() {
 
     currentTurnKindRef.current = kind;
     resetTurnUi(kind === 'narration' ? 'Beforest is speaking...' : 'Beforest is responding...');
-    setIsNarrating(true);
     sessionRef.current.sendRealtimeInput({ text });
   }
 
@@ -581,8 +578,6 @@ function App() {
   function handleTurnComplete() {
     const turnKind = currentTurnKindRef.current;
     currentTurnKindRef.current = null;
-    setIsNarrating(false);
-
     if (turnKind === 'narration') {
       if (currentSlideIndexRef.current < slidesRef.current.length - 1) {
         scheduleNextSlide(2200);
@@ -708,7 +703,6 @@ function App() {
     sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
     isRecordingRef.current = false;
     setIsRecording(false);
-    setIsNarrating(true);
     clearQuestionCommandTimeout();
     questionCommandTimeoutRef.current = window.setTimeout(() => {
       maybeHandleQuestionCommand(pendingTranscriptRef.current);
@@ -725,7 +719,6 @@ function App() {
     setIsSwitchingVoice(true);
     setConnectionState('connecting');
     setConnectionError('');
-    setIsNarrating(false);
     hasNarratedSlideRef.current = null;
     resetTurnUi(`Switching to ${nextVoice}...`);
     suppressNextCloseErrorRef.current = true;
@@ -772,17 +765,6 @@ function App() {
     };
   }, [isMobile]);
 
-  const statusLabel =
-    connectionState === 'ready'
-      ? isRecording
-        ? 'Listening'
-        : isNarrating
-          ? 'Speaking'
-          : 'Guiding'
-      : connectionState === 'connecting'
-        ? 'Connecting'
-        : 'Offline';
-
   if (authEnabled && !isAuthenticated) {
     return (
       <main className="shell auth-shell">
@@ -824,32 +806,31 @@ function App() {
       <div className="ambient ambient-b" />
 
       <section className="stage">
-        <div className="top-bar">
-          <div className="status-row">
-            <span className={`status-dot ${connectionState}`} />
-            <span>{isSwitchingVoice ? `Switching to ${selectedVoice}` : statusLabel}</span>
-          </div>
-
-          <div className="voice-switcher">
-            <label htmlFor="voice-select">Voice</label>
-            <select
-              id="voice-select"
-              value={selectedVoice}
-              onChange={(event) =>
-                void reconnectWithVoice(event.target.value as (typeof VOICE_OPTIONS)[number])
-              }
-              disabled={connectionState === 'connecting' || isRecording || isSwitchingVoice}
-            >
-              {VOICE_OPTIONS.map((voice) => (
-                <option key={voice} value={voice}>
-                  {voice}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
         <figure className="hero-image">
+          <div className="hero-chrome">
+            <div className="status-row" aria-label={`Connection status: ${connectionState}`} title={connectionState}>
+              <span className={`status-dot ${connectionState}`} />
+            </div>
+
+            <div className="voice-switcher">
+              <label htmlFor="voice-select">Voice</label>
+              <select
+                id="voice-select"
+                value={selectedVoice}
+                onChange={(event) =>
+                  void reconnectWithVoice(event.target.value as (typeof VOICE_OPTIONS)[number])
+                }
+                disabled={connectionState === 'connecting' || isRecording || isSwitchingVoice}
+              >
+                {VOICE_OPTIONS.map((voice) => (
+                  <option key={voice} value={voice}>
+                    {voice}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           {currentSlide ? (
             <img
               key={currentSlide.id}
@@ -895,7 +876,7 @@ function App() {
               onClick={activatePresentation}
               disabled={connectionState !== 'ready'}
             >
-              <span>Begin presentation</span>
+              <span>Begin</span>
               <ArrowUpRight size={18} />
             </button>
           ) : currentSlide?.ctaHref ? (

@@ -228,6 +228,17 @@ function App() {
     return true;
   }
 
+  function shouldRouteQuestion(question: string) {
+    const normalized = question.toLowerCase().trim();
+    if (!normalized) {
+      return false;
+    }
+
+    return /(go to|take me to|jump to|show me slide|slide\s+\d+|slide\s+(one|two|three|four|five|six|seven|eight|nine|ten)|make a slide|create a slide|new slide|another slide|dedicated slide|compare this with|show this differently)/.test(
+      normalized,
+    );
+  }
+
   async function openLiveSession(
     voiceName: (typeof VOICE_OPTIONS)[number],
     options?: { loadPresentation?: boolean },
@@ -451,15 +462,15 @@ function App() {
       }
 
       if (route.action === 'stay') {
-        setLiveTranscript('Question answered. Hold space on desktop or hold the mic on mobile to ask more.');
+        setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
         return;
       }
     } catch {
-      setLiveTranscript('Question answered. Hold space on desktop or hold the mic on mobile to ask more.');
+      setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
       return;
     }
 
-    setLiveTranscript('Question answered. Hold space on desktop or hold the mic on mobile to ask more.');
+    setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
   }
 
   function handleTurnComplete() {
@@ -480,6 +491,10 @@ function App() {
       const targetIndex = parseNavigationCommand(question);
       if (targetIndex !== null && !Number.isNaN(targetIndex)) {
         applyNavigationCommand(targetIndex);
+        return;
+      }
+      if (!shouldRouteQuestion(question)) {
+        setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
         return;
       }
       void applyQuestionRouting(question);

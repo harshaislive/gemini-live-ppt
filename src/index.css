@@ -495,9 +495,16 @@ select {
 
   .stream-copy {
     max-width: 100%;
-    height: calc(1.45em * 3);
+    height: auto;
+    min-height: calc(1.45em * 4);
+    max-height: calc(1.45em * 5);
+    align-content: flex-start;
+    overflow-y: auto;
+    padding-right: 4px;
     font-size: 1.02rem;
     line-height: 1.45;
+    mask-image: none;
+    -webkit-mask-image: none;
   }
 
   .action-row {

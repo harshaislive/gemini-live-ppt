@@ -42,6 +42,28 @@ interface QuestionRouteResponse {
 
 const VOICE_OPTIONS = ['Zephyr', 'Sulafat', 'Algieba', 'Schedar', 'Achird', 'Kore'] as const;
 
+function getOptimizedImageUrl(
+  imageUrl: string,
+  options: { width: number; height: number; quality: number },
+) {
+  if (!imageUrl.includes('/storage/v1/object/public/')) {
+    return imageUrl;
+  }
+
+  const transformedBase = imageUrl.replace(
+    '/storage/v1/object/public/',
+    '/storage/v1/render/image/public/',
+  );
+  const url = new URL(transformedBase);
+
+  url.searchParams.set('width', String(options.width));
+  url.searchParams.set('height', String(options.height));
+  url.searchParams.set('quality', String(options.quality));
+  url.searchParams.set('resize', 'cover');
+
+  return url.toString();
+}
+
 function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [connectionError, setConnectionError] = useState('');
@@ -82,10 +104,38 @@ function App() {
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
+  const currentSlideImageUrl = currentSlide
+    ? getOptimizedImageUrl(currentSlide.imageUrl, {
+        width: isMobile ? 840 : 1280,
+        height: isMobile ? 473 : 720,
+        quality: isMobile ? 62 : 70,
+      })
+    : '';
 
   useEffect(() => {
     slidesRef.current = slides;
   }, [slides]);
+
+  useEffect(() => {
+    const uniqueImageUrls = [
+      ...new Set(
+        slides
+          .map((slide) =>
+            getOptimizedImageUrl(slide.imageUrl, {
+              width: isMobile ? 840 : 1280,
+              height: isMobile ? 473 : 720,
+              quality: isMobile ? 62 : 70,
+            }),
+          )
+          .filter(Boolean),
+      ),
+    ];
+
+    for (const imageUrl of uniqueImageUrls) {
+      const image = new window.Image();
+      image.src = imageUrl;
+    }
+  }, [isMobile, slides]);
 
   useEffect(() => {
     currentSlideIndexRef.current = currentSlideIndex;
@@ -449,7 +499,7 @@ function App() {
     sendTextTurn(buildNarrationPrompt(slide, slideIndex, slidesRef.current.length), 'narration');
   }
 
-  function scheduleNextSlide(delayMs = 5000) {
+  function scheduleNextSlide(delayMs = 2200) {
     clearAutoAdvance();
     if (currentSlideIndexRef.current >= slidesRef.current.length - 1) {
       return;
@@ -462,7 +512,7 @@ function App() {
 
   async function applyQuestionRouting(question: string) {
     if (!question.trim()) {
-      scheduleNextSlide(4500);
+      scheduleNextSlide(1600);
       return;
     }
 
@@ -535,7 +585,7 @@ function App() {
 
     if (turnKind === 'narration') {
       if (currentSlideIndexRef.current < slidesRef.current.length - 1) {
-        scheduleNextSlide(6500);
+        scheduleNextSlide(2200);
       }
       return;
     }
@@ -800,7 +850,13 @@ function App() {
         </div>
 
         <figure className="hero-image">
-          {currentSlide ? <img src={currentSlide.imageUrl} alt={currentSlide.title} /> : null}
+          {currentSlide ? (
+            <img
+              key={currentSlide.id}
+              src={currentSlideImageUrl}
+              alt={currentSlide.title}
+            />
+          ) : null}
         </figure>
 
         <header className="headline-block">

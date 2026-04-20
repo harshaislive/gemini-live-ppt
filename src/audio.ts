@@ -59,6 +59,7 @@ export interface RecorderHandle {
 export interface AudioPlayerHandle {
   enqueue: (base64Chunk: string) => Promise<void>;
   getBufferedMs: () => number;
+  prepare: () => Promise<void>;
   reset: () => void;
   dispose: () => Promise<void>;
 }
@@ -181,6 +182,15 @@ export function createPcmPlayer(): AudioPlayerHandle {
     nextStartTime += buffer.duration;
   }
 
+  async function prepare() {
+    const context = await ensureContext();
+    const buffer = context.createBuffer(1, 1, OUTPUT_SAMPLE_RATE);
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.connect(context.destination);
+    source.start();
+  }
+
   function reset() {
     for (const source of activeSources) {
       try {
@@ -215,5 +225,5 @@ export function createPcmPlayer(): AudioPlayerHandle {
     }
   }
 
-  return { enqueue, getBufferedMs, reset, dispose };
+  return { enqueue, getBufferedMs, prepare, reset, dispose };
 }

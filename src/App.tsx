@@ -655,11 +655,24 @@ function App() {
     }
   }
 
-  function activatePresentation() {
+  async function unlockAudioPlayback() {
+    if (!playerRef.current) {
+      playerRef.current = createPcmPlayer();
+    }
+
+    try {
+      await playerRef.current.prepare();
+    } catch {
+      // Keep the presentation usable even if the browser rejects the warm-up attempt.
+    }
+  }
+
+  async function activatePresentation() {
     if (isActivatedRef.current) {
       return;
     }
 
+    await unlockAudioPlayback();
     setIsActivated(true);
     hasNarratedSlideRef.current = null;
   }
@@ -671,7 +684,9 @@ function App() {
     }
 
     if (!isActivatedRef.current) {
-      activatePresentation();
+      await activatePresentation();
+    } else {
+      await unlockAudioPlayback();
     }
 
     clearAutoAdvance();
@@ -727,6 +742,7 @@ function App() {
     try {
       await playerRef.current?.dispose();
       playerRef.current = null;
+      await unlockAudioPlayback();
       await openLiveSession(nextVoice);
     } catch (error) {
       setConnectionState('error');
@@ -873,7 +889,7 @@ function App() {
             <button
               type="button"
               className="continue-button cta-button"
-              onClick={activatePresentation}
+              onClick={() => void activatePresentation()}
               disabled={connectionState !== 'ready'}
             >
               <span>Begin</span>

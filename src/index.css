@@ -90,6 +90,7 @@ select {
 
 .portrait-shell {
   overflow: hidden;
+  padding: 0;
 }
 
 .auth-shell {
@@ -223,11 +224,11 @@ select {
 
 .portrait-player {
   position: relative;
-  width: min(calc(100vw - 48px), calc((100dvh - 48px) * 9 / 16));
-  height: min(calc(100dvh - 48px), calc((100vw - 48px) * 16 / 9));
+  width: min(100vw, calc(100dvh * 9 / 16));
+  height: min(100dvh, calc(100vw * 16 / 9));
   overflow: hidden;
-  border-radius: 34px;
-  border: 1px solid rgba(253, 251, 247, 0.16);
+  border-radius: 26px;
+  border: 1px solid rgba(253, 251, 247, 0.1);
   background: #1d1916;
   box-shadow: var(--shadow);
   isolation: isolate;
@@ -264,7 +265,7 @@ select {
   position: absolute;
   inset: 0;
   opacity: 0;
-  transition: opacity 1800ms ease;
+  transition: opacity 2400ms ease;
 }
 
 .scene-layer.active {
@@ -277,9 +278,21 @@ select {
   display: block;
   object-fit: cover;
   object-position: center center;
-  transform: scale(1.015);
-  filter: saturate(0.9) contrast(0.95) brightness(0.84);
-  animation: imageDrift 24s ease-in-out infinite alternate;
+  transform: scale(1.08);
+  filter: saturate(0.92) contrast(0.96) brightness(0.84);
+  will-change: transform;
+}
+
+.scene-layer.motion-0 img {
+  animation: imageDriftForward 30s ease-in-out infinite alternate;
+}
+
+.scene-layer.motion-1 img {
+  animation: imageDriftReverse 32s ease-in-out infinite alternate;
+}
+
+.scene-layer.motion-2 img {
+  animation: imageDriftLift 34s ease-in-out infinite alternate;
 }
 
 .portrait-overlay {
@@ -319,64 +332,38 @@ select {
   transform: scaleX(0.22);
 }
 
-.intro-card {
-  position: absolute;
-  top: 66px;
-  left: 14px;
-  max-width: 66%;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity 1100ms ease,
-    transform 1100ms ease;
-}
-
-.intro-card.hidden {
-  opacity: 0;
-  transform: translateY(-12px);
-  pointer-events: none;
-}
-
-.intro-label {
-  margin: 0 0 10px;
-  color: var(--yellow);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  font-size: 0.66rem;
-}
-
-.intro-card h1 {
-  margin: 0;
-  font-family: 'ABC Arizona Flare', Georgia, serif;
-  font-weight: 300;
-  font-size: clamp(2.2rem, 8vw, 3.15rem);
-  line-height: 0.9;
-  letter-spacing: -0.08em;
-  text-wrap: balance;
-}
-
 .topic-heading {
   position: absolute;
-  top: 32px;
-  left: 14px;
+  top: 28px;
+  left: 50%;
   z-index: 7;
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 11px;
-  border: 1px solid rgba(253, 251, 247, 0.1);
+  justify-content: center;
+  min-height: 32px;
+  max-width: calc(100% - 128px);
+  padding: 0 13px;
+  border: 1px solid rgba(253, 251, 247, 0.14);
   border-radius: 999px;
-  background: rgba(12, 11, 10, 0.14);
-  color: rgba(253, 251, 247, 0.74);
-  backdrop-filter: blur(12px);
-  font-size: 0.68rem;
-  letter-spacing: 0.12em;
+  background: rgba(12, 11, 10, 0.24);
+  color: rgba(253, 251, 247, 0.86);
+  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
+  text-align: center;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.16);
+}
+
+.topic-heading.idle {
+  color: rgba(253, 251, 247, 0.94);
+  background: rgba(12, 11, 10, 0.3);
 }
 
 .voice-corner {
   position: absolute;
-  top: 34px;
+  top: 26px;
   right: 14px;
   z-index: 7;
   display: inline-flex;
@@ -697,12 +684,7 @@ select {
 }
 
 .screen-frame {
-  position: absolute;
-  inset: 8px;
-  border-radius: 28px;
-  border: 1px solid rgba(253, 251, 247, 0.08);
-  pointer-events: none;
-  z-index: 6;
+  display: none;
 }
 
 .sr-only {
@@ -717,12 +699,30 @@ select {
   border: 0;
 }
 
-@keyframes imageDrift {
+@keyframes imageDriftForward {
   0% {
-    transform: scale(1.015) translate3d(-0.8%, -0.4%, 0);
+    transform: scale(1.08) translate3d(-1.2%, -0.8%, 0);
   }
   100% {
-    transform: scale(1.04) translate3d(1%, 0.7%, 0);
+    transform: scale(1.14) translate3d(1.8%, 1.2%, 0);
+  }
+}
+
+@keyframes imageDriftReverse {
+  0% {
+    transform: scale(1.1) translate3d(1.2%, -0.6%, 0);
+  }
+  100% {
+    transform: scale(1.15) translate3d(-1.4%, 1%, 0);
+  }
+}
+
+@keyframes imageDriftLift {
+  0% {
+    transform: scale(1.09) translate3d(0, 1.2%, 0);
+  }
+  100% {
+    transform: scale(1.16) translate3d(0, -1.4%, 0);
   }
 }
 
@@ -750,13 +750,13 @@ select {
   }
 
   .voice-corner {
-    top: 32px;
+    top: 24px;
     right: 12px;
   }
 
   .topic-heading {
-    top: 30px;
-    left: 12px;
+    top: 26px;
+    max-width: calc(100% - 108px);
   }
 
   .subtitle-rail {
@@ -777,9 +777,7 @@ select {
   }
 
   .screen-frame {
-    inset: 0;
-    border: 0;
-    border-radius: 0;
+    display: none;
   }
 }
 
@@ -788,7 +786,6 @@ select {
   .scene-layer img,
   .story-fill,
   .bottom-progress span,
-  .intro-card,
   .topic-heading,
   .subtitle-line,
   .center-mic {

@@ -36,6 +36,7 @@ interface QuestionRouteResponse {
 }
 
 const VOICE_OPTIONS = ['Zephyr', 'Sulafat', 'Algieba', 'Schedar', 'Achird', 'Kore'] as const;
+const PRE_BEGIN_HOOK = '30 Nights a Year Where Recovery Becomes Real';
 
 function getOptimizedImageUrl(
   imageUrl: string,
@@ -175,6 +176,12 @@ function buildTopicSequence(slide: PresentationSlide | null) {
   return [noteLead || slide.title].slice(0, 2);
 }
 
+function isSystemCaptionLabel(text: string) {
+  return /^(Beforest is speaking|Beforest is responding|Listening|Switching to|Moving to slide|Question answered\.)/i.test(
+    text.trim(),
+  );
+}
+
 function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [connectionError, setConnectionError] = useState('');
@@ -192,7 +199,6 @@ function App() {
   const [latestOutputTranscript, setLatestOutputTranscript] = useState('');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [selectedVoice, setSelectedVoice] = useState<(typeof VOICE_OPTIONS)[number]>('Zephyr');
-  const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [displaySubtitle, setDisplaySubtitle] = useState('');
   const [isSubtitleVisible, setIsSubtitleVisible] = useState(false);
   const [uiError, setUiError] = useState('');
@@ -216,7 +222,6 @@ function App() {
   const currentSlideIndexRef = useRef(0);
   const isActivatedRef = useRef(false);
   const handledQuestionTranscriptRef = useRef('');
-  const introTimeoutRef = useRef<number | null>(null);
   const subtitleTimeoutRef = useRef<number | null>(null);
   const lastSubtitleTextRef = useRef('');
   const subtitleCommitWordCountRef = useRef(0);
@@ -254,6 +259,7 @@ function App() {
     : 0;
   const topicSequence = useMemo(() => buildTopicSequence(currentSlide), [currentSlide]);
   const activeTopic = topicSequence[Math.min(topicIndex, topicSequence.length - 1)] ?? '';
+  const visibleTopic = isActivated ? activeTopic : PRE_BEGIN_HOOK;
 
   useEffect(() => {
     slidesRef.current = slides;
@@ -310,31 +316,10 @@ function App() {
   }, [isActivated, storyImages.length]);
 
   useEffect(() => {
-    if (introTimeoutRef.current !== null) {
-      window.clearTimeout(introTimeoutRef.current);
-      introTimeoutRef.current = null;
-    }
-
-    setIsIntroVisible(true);
     setDisplaySubtitle('');
     setIsSubtitleVisible(false);
     lastSubtitleTextRef.current = '';
     subtitleCommitWordCountRef.current = 0;
-
-    if (!currentSlide) {
-      return;
-    }
-
-    introTimeoutRef.current = window.setTimeout(() => {
-      setIsIntroVisible(false);
-    }, 2100);
-
-    return () => {
-      if (introTimeoutRef.current !== null) {
-        window.clearTimeout(introTimeoutRef.current);
-        introTimeoutRef.current = null;
-      }
-    };
   }, [currentSlide?.id]);
 
   useEffect(() => {
@@ -354,10 +339,7 @@ function App() {
       nextSubtitle = liveTranscript.trim() || 'Listening...';
     } else if (!isActivated) {
       nextSubtitle = '';
-    } else if (
-      liveTranscript.trim() &&
-      !['Beforest is speaking...', 'Beforest is responding...'].includes(liveTranscript.trim())
-    ) {
+    } else if (liveTranscript.trim() && !isSystemCaptionLabel(liveTranscript.trim())) {
       nextSubtitle = liveTranscript.trim();
     }
 
@@ -698,9 +680,6 @@ function App() {
       clearTranscriptQueue();
       clearAutoAdvance();
       clearQuestionCommandTimeout();
-      if (introTimeoutRef.current !== null) {
-        window.clearTimeout(introTimeoutRef.current);
-      }
       if (subtitleTimeoutRef.current !== null) {
         window.clearTimeout(subtitleTimeoutRef.current);
       }
@@ -921,7 +900,8 @@ function App() {
 
     const outputTranscript = serverContent?.outputTranscription?.text;
     if (outputTranscript) {
-      const delayMs = Math.max(0, (playerRef.current?.getBufferedMs() ?? 0) - 120);
+      const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+      const delayMs = Math.min(140, bufferedMs * 0.08);
       const timeoutId = window.setTimeout(() => {
         setLatestOutputTranscript((previous) =>
           mergeOutputTranscriptSnapshot(previous, outputTranscript),
@@ -1206,12 +1186,12 @@ function App() {
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
 
-      <section className="portrait-player">
+      <section className="portrait-player" aria-label={presentationTitle}>
         <div className="scene-stack" aria-live="off">
           {storyImages.map((imageUrl, index) => (
             <figure
               key={imageUrl}
-              className={`scene-layer${index === activeStoryIndex ? ' active' : ''}`}
+              className={`scene-layer motion-${index % 3}${index === activeStoryIndex ? ' active' : ''}`}
               aria-hidden={index !== activeStoryIndex}
             >
               <img src={imageUrl} alt="" />
@@ -1254,18 +1234,9 @@ function App() {
                 ))}
           </div>
 
-          {isActivated ? (
-            <div className="topic-heading" aria-live="polite">
-              <span>{activeTopic}</span>
-            </div>
-          ) : null}
-
-          {isActivated ? (
-            <div className={`intro-card${isIntroVisible ? '' : ' hidden'}`}>
-              <p className="intro-label">{presentationTitle}</p>
-              <h1>{currentSlide?.title ?? 'Loading presentation...'}</h1>
-            </div>
-          ) : null}
+          <div className={`topic-heading${isActivated ? '' : ' idle'}`} aria-live="polite">
+            <span>{visibleTopic}</span>
+          </div>
 
           <div className="voice-corner">
             <label className="sr-only" htmlFor="voice-select">

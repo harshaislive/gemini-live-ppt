@@ -1464,7 +1464,6 @@ function App() {
 
     try {
       await activatePresentation();
-      kickoffCurrentSlideNarration({ force: true });
     } catch (error) {
       setUiError(
         error instanceof Error ? error.message : 'Unable to begin the presentation.',

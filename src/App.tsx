@@ -65,28 +65,59 @@ function getOptimizedImageUrl(
 }
 
 function buildSubtitleWindow(transcriptSegments: TranscriptSegment[]) {
-  const windowSegments: string[] = [];
-  let charCount = 0;
+  const recentTexts = transcriptSegments
+    .map((segment) => segment.text.trim())
+    .filter(Boolean)
+    .slice(-5);
 
-  for (let index = transcriptSegments.length - 1; index >= 0; index -= 1) {
-    const text = transcriptSegments[index]?.text.trim();
-    if (!text) {
+  if (recentTexts.length === 0) {
+    return '';
+  }
+
+  const normalized: string[] = [];
+
+  for (const text of recentTexts) {
+    const previous = normalized.at(-1);
+
+    if (!previous) {
+      normalized.push(text);
       continue;
     }
 
-    windowSegments.unshift(text);
-    charCount += text.length + 1;
-
-    if (charCount >= 150 && /[.!?]["']?$/.test(text)) {
-      break;
+    if (text === previous) {
+      continue;
     }
 
-    if (charCount >= 210) {
-      break;
+    if (text.startsWith(previous)) {
+      normalized[normalized.length - 1] = text;
+      continue;
     }
+
+    if (previous.startsWith(text)) {
+      continue;
+    }
+
+    normalized.push(text);
   }
 
-  return windowSegments.join(' ').trim();
+  let cue = normalized.at(-1) ?? '';
+  let wordCount = cue.split(/\s+/).filter(Boolean).length;
+
+  for (let index = normalized.length - 2; index >= 0; index -= 1) {
+    if (wordCount >= 14 || cue.length >= 120) {
+      break;
+    }
+
+    const candidate = `${normalized[index]} ${cue}`.trim();
+    if (candidate.length > 150) {
+      break;
+    }
+
+    cue = candidate;
+    wordCount = cue.split(/\s+/).filter(Boolean).length;
+  }
+
+  return cue;
 }
 
 function buildTopicSequence(slide: PresentationSlide | null) {
@@ -94,61 +125,42 @@ function buildTopicSequence(slide: PresentationSlide | null) {
     return ['Guided conversation'];
   }
 
+  const curatedTopics: Record<string, string[]> = {
+    'slide-01': ['When Life Stays Full', 'Recovery Is Maintenance'],
+    'slide-02': ['A Life That Still Hurts'],
+    'slide-03': ['30 Nights a Year', 'Protected Time, Not Escape'],
+    'slide-04': ['7 Years on the Land', '1,300 Acres Restored'],
+    'slide-05': ['Rest Is a Rhythm'],
+    'slide-06': ['Where Recovery Gets Real', 'Places You Can Return To'],
+    'slide-07': ['30 Nights/Year for 10 Years', 'Access Changes Behaviour'],
+    'slide-08': ['Decide With Your Feet'],
+    'slide-09': ['The Cost of Waiting', 'Another Year Unchanged'],
+    'slide-10': ['Start With a Trial Stay', 'Experience Before Commitment'],
+  };
+
+  if (curatedTopics[slide.id]) {
+    return curatedTopics[slide.id];
+  }
+
   const content = `${slide.title} ${slide.note} ${slide.script}`.toLowerCase();
-  const topics: string[] = [];
 
   if (slide.kind === 'cta') {
-    return ['Try it first', 'Your next step'];
+    return ['Start With a Trial Stay', 'Your Next Step'];
   }
 
   if (slide.kind === 'quote') {
     if (content.includes('feet')) {
-      return ['A different test'];
+      return ['Decide With Your Feet'];
     }
-    return ['A quiet pause'];
+    return ['A Quiet Reset'];
   }
 
   if (slide.kind === 'derived') {
-    return ['Going deeper'];
+    return [slide.title, 'Going deeper'];
   }
 
-  if (
-    /overcapacity|erosion|fatigue|recovery|restoration|protected time|reset|rest is|rhythm/.test(
-      content,
-    )
-  ) {
-    topics.push('Why this matters');
-  }
-
-  if (/protected time|practice of return|returning|recurring return|rhythm/.test(content)) {
-    topics.push('A better rhythm');
-  }
-
-  if (/trust|evidence|years|families|acres|stewardship|proof/.test(content)) {
-    topics.push('Why trust it');
-  }
-
-  if (/coorg|hyderabad|bhopal|mumbai|belonging|landscape|place to stand/.test(content)) {
-    topics.push('Places to return');
-  }
-
-  if (/access|ownership|person-nights|ten years|structure|model/.test(content)) {
-    topics.push('How it works');
-  }
-
-  if (/waiting|cost|delay|unchanged/.test(content)) {
-    topics.push('Why now');
-  }
-
-  if (/trial|pilot|smallest real step|experience before commitment/.test(content)) {
-    topics.push('Try it first');
-  }
-
-  if (topics.length === 0) {
-    topics.push(slide.note.split('.').at(0)?.trim() || slide.title);
-  }
-
-  return [...new Set(topics)].slice(0, 2);
+  const noteLead = slide.note.split('.').at(0)?.trim();
+  return [noteLead || slide.title].slice(0, 2);
 }
 
 function App() {
@@ -1224,14 +1236,18 @@ function App() {
                 ))}
           </div>
 
-          <div className="topic-heading" aria-live="polite">
-            <span>{activeTopic}</span>
-          </div>
+          {isActivated ? (
+            <div className="topic-heading" aria-live="polite">
+              <span>{activeTopic}</span>
+            </div>
+          ) : null}
 
-          <div className={`intro-card${isIntroVisible ? '' : ' hidden'}`}>
-            <p className="intro-label">{presentationTitle}</p>
-            <h1>{currentSlide?.title ?? 'Loading presentation...'}</h1>
-          </div>
+          {isActivated ? (
+            <div className={`intro-card${isIntroVisible ? '' : ' hidden'}`}>
+              <p className="intro-label">{presentationTitle}</p>
+              <h1>{currentSlide?.title ?? 'Loading presentation...'}</h1>
+            </div>
+          ) : null}
 
           <div className="voice-corner">
             <label className="sr-only" htmlFor="voice-select">

@@ -10,6 +10,36 @@ import {
 
 type ConnectionState = 'connecting' | 'ready' | 'error';
 type TurnKind = 'narration' | 'question' | null;
+type LiveTurnState =
+  | 'idle'
+  | 'starting'
+  | 'narrating'
+  | 'draining'
+  | 'listening'
+  | 'answering'
+  | 'resuming'
+  | 'error';
+type LiveSessionEventType =
+  | 'session_opened'
+  | 'session_error'
+  | 'session_closed'
+  | 'begin_clicked'
+  | 'playback_unlock_attempted'
+  | 'playback_unlock_succeeded'
+  | 'playback_unlock_failed'
+  | 'narration_requested'
+  | 'question_requested'
+  | 'first_output_transcript'
+  | 'first_audio_chunk'
+  | 'first_audio_timeout'
+  | 'narration_retry'
+  | 'generation_complete'
+  | 'turn_complete'
+  | 'recording_started'
+  | 'recording_stopped'
+  | 'interrupted'
+  | 'slide_advanced'
+  | 'voice_changed';
 
 interface PresentationSlide {
   id: string;
@@ -33,6 +63,15 @@ interface QuestionRouteResponse {
   derivedTitle: string | null;
   derivedNote: string | null;
   imageFromSlideId: string | null;
+}
+
+interface LiveSessionEvent {
+  id: number;
+  at: string;
+  type: LiveSessionEventType;
+  slideId: string | null;
+  turnState: LiveTurnState;
+  detail: string;
 }
 
 const VOICE_OPTIONS = ['Zephyr', 'Sulafat', 'Algieba', 'Schedar', 'Achird', 'Kore'] as const;
@@ -102,7 +141,7 @@ function mergeOutputTranscriptSnapshot(previousText: string, nextText: string) {
   return `${previous} ${next}`.replace(/\s+/g, ' ').trim();
 }
 
-function buildLiveCaption(transcript: string) {
+function buildLiveCaption(transcript: string, previousCaption = '') {
   const text = transcript.replace(/\s+/g, ' ').trim();
 
   if (!text) {
@@ -116,7 +155,7 @@ function buildLiveCaption(transcript: string) {
 
   if (completeSentences.length >= 2) {
     const combined = completeSentences.slice(-2).join(' ').trim();
-    if (combined.length <= 172 && countWords(combined) <= 26) {
+    if (combined.length <= 188 && countWords(combined) <= 30) {
       return combined;
     }
   }
@@ -128,21 +167,41 @@ function buildLiveCaption(transcript: string) {
 
   if (trailingSentence) {
     const trailingWords = trailingSentence.split(/\s+/).filter(Boolean);
-    if (trailingWords.length < 5) {
-      return '';
+    if (trailingWords.length < 4) {
+      return previousCaption;
     }
 
-    return trailingWords.length > 12
-      ? trailingWords.slice(trailingWords.length - 12).join(' ')
-      : trailingSentence;
+    const clippedTrailing =
+      trailingWords.length > 18
+        ? trailingWords.slice(trailingWords.length - 18).join(' ')
+        : trailingSentence;
+
+    if (
+      previousCaption &&
+      clippedTrailing.startsWith(previousCaption) &&
+      clippedTrailing.length - previousCaption.length < 16
+    ) {
+      return previousCaption;
+    }
+
+    return clippedTrailing;
   }
 
   const words = text.split(/\s+/).filter(Boolean);
-  if (words.length < 5) {
-    return '';
+  if (words.length < 4) {
+    return previousCaption;
   }
 
-  return words.length > 12 ? words.slice(words.length - 12).join(' ') : text;
+  const fallback = words.length > 18 ? words.slice(words.length - 18).join(' ') : text;
+  if (
+    previousCaption &&
+    fallback.startsWith(previousCaption) &&
+    fallback.length - previousCaption.length < 16
+  ) {
+    return previousCaption;
+  }
+
+  return fallback;
 }
 
 function isSystemCaptionLabel(text: string) {
@@ -165,6 +224,8 @@ function App() {
   const [presentationTitle, setPresentationTitle] = useState('The 10% Life');
   const [slides, setSlides] = useState<PresentationSlide[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [liveTurnState, setLiveTurnState] = useState<LiveTurnState>('idle');
+  const [liveEvents, setLiveEvents] = useState<LiveSessionEvent[]>([]);
   const [latestOutputTranscript, setLatestOutputTranscript] = useState('');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [selectedVoice, setSelectedVoice] = useState<(typeof VOICE_OPTIONS)[number]>('Zephyr');
@@ -173,6 +234,7 @@ function App() {
   const [uiError, setUiError] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
   const playerRef = useRef<AudioPlayerHandle | null>(null);
@@ -193,8 +255,24 @@ function App() {
   const isActivatedRef = useRef(false);
   const handledQuestionTranscriptRef = useRef('');
   const captionTimeoutRef = useRef<number | null>(null);
+  const liveTurnStateRef = useRef<LiveTurnState>('idle');
+  const liveEventIdRef = useRef(0);
+  const startupAudioTimeoutRef = useRef<number | null>(null);
+  const activeNarrationTurnIdRef = useRef(0);
+  const firstAudioChunkReceivedRef = useRef(false);
+  const firstOutputTranscriptReceivedRef = useRef(false);
+  const previousSlideIndexRef = useRef(0);
+  const narrationRetryCountRef = useRef(0);
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
+  const isDebugMode = useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.has('debug') ||
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1'
+    );
+  }, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
   const slideVisuals = useMemo(
     () =>
@@ -225,6 +303,7 @@ function App() {
 
   useEffect(() => {
     currentSlideIndexRef.current = currentSlideIndex;
+    narrationRetryCountRef.current = 0;
   }, [currentSlideIndex]);
 
   useEffect(() => {
@@ -232,10 +311,110 @@ function App() {
   }, [isActivated]);
 
   useEffect(() => {
+    if (!isActivated) {
+      previousSlideIndexRef.current = currentSlideIndex;
+      return;
+    }
+
+    if (previousSlideIndexRef.current !== currentSlideIndex) {
+      logLiveEvent('slide_advanced', `Slide ${previousSlideIndexRef.current + 1} -> ${currentSlideIndex + 1}`);
+    }
+
+    previousSlideIndexRef.current = currentSlideIndex;
+  }, [currentSlideIndex, isActivated]);
+
+  function setLiveTurnStateValue(nextState: LiveTurnState) {
+    liveTurnStateRef.current = nextState;
+    setLiveTurnState(nextState);
+  }
+
+  function logLiveEvent(type: LiveSessionEventType, detail: string) {
+    const nextEvent: LiveSessionEvent = {
+      id: liveEventIdRef.current += 1,
+      at: new Date().toISOString(),
+      type,
+      slideId: slidesRef.current[currentSlideIndexRef.current]?.id ?? null,
+      turnState: liveTurnStateRef.current,
+      detail,
+    };
+
+    setLiveEvents((previous) => [...previous.slice(-39), nextEvent]);
+  }
+
+  function clearStartupAudioTimeout() {
+    if (startupAudioTimeoutRef.current !== null) {
+      window.clearTimeout(startupAudioTimeoutRef.current);
+      startupAudioTimeoutRef.current = null;
+    }
+  }
+
+  async function retryCurrentNarrationStartup() {
+    const slideIndex = currentSlideIndexRef.current;
+    const slide = slidesRef.current[slideIndex];
+    if (!slide || !isActivatedRef.current) {
+      return;
+    }
+
+    narrationRetryCountRef.current += 1;
+    setConnectionState('connecting');
+    setConnectionError('');
+    setUiError('Voice stalled. Retrying this scene...');
+    setLiveTurnStateValue('starting');
+    logLiveEvent('narration_retry', `Retrying narration for slide ${slideIndex + 1}.`);
+
+    try {
+      suppressNextCloseErrorRef.current = true;
+      sessionRef.current?.close();
+      sessionRef.current = null;
+      await playerRef.current?.dispose();
+      playerRef.current = null;
+      await openLiveSession(selectedVoiceRef.current);
+      await unlockAudioPlayback({ required: true, reason: 'narration retry' });
+
+      if (!isActivatedRef.current || currentSlideIndexRef.current !== slideIndex) {
+        return;
+      }
+
+      hasNarratedSlideRef.current = slideIndex;
+      narrateSlide(slideIndex);
+    } catch (error) {
+      setConnectionState('error');
+      setConnectionError(error instanceof Error ? error.message : 'Unable to retry narration.');
+      setUiError('Voice could not restart. Switch the voice or refresh the session.');
+      setLiveTurnStateValue('error');
+    }
+  }
+
+  function beginNarrationTracking() {
+    activeNarrationTurnIdRef.current += 1;
+    firstAudioChunkReceivedRef.current = false;
+    firstOutputTranscriptReceivedRef.current = false;
+    clearStartupAudioTimeout();
+
+    const turnId = activeNarrationTurnIdRef.current;
+    startupAudioTimeoutRef.current = window.setTimeout(() => {
+      if (
+        currentTurnKindRef.current === 'narration' &&
+        activeNarrationTurnIdRef.current === turnId &&
+        !firstAudioChunkReceivedRef.current
+      ) {
+        logLiveEvent('first_audio_timeout', 'No audio chunk arrived within 6 seconds of narration request.');
+        if (narrationRetryCountRef.current < 1) {
+          void retryCurrentNarrationStartup();
+          return;
+        }
+
+        setLiveTurnStateValue('error');
+        setUiError('Voice did not start. Try switching the voice or refreshing the session.');
+      }
+    }, 6000);
+  }
+
+  useEffect(() => {
     let nextSubtitle = displaySubtitle;
 
     if (latestOutputTranscript.trim()) {
-      const liveCaption = buildLiveCaption(latestOutputTranscript);
+      const liveCaption = buildLiveCaption(latestOutputTranscript, displaySubtitle);
       if (liveCaption) {
         nextSubtitle = liveCaption;
       }
@@ -252,7 +431,10 @@ function App() {
       captionTimeoutRef.current = null;
     }
 
-    const delayMs = latestOutputTranscript.trim() ? 220 : 0;
+    const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+    const delayMs = latestOutputTranscript.trim()
+      ? Math.max(320, Math.min(1100, Math.round(bufferedMs * 0.16 + 360)))
+      : 0;
     captionTimeoutRef.current = window.setTimeout(() => {
       setDisplaySubtitle(nextSubtitle);
       setIsSubtitleVisible(Boolean(nextSubtitle));
@@ -274,6 +456,7 @@ function App() {
     }
     queuedOutputTranscriptRef.current = '';
     outputTranscriptIsFinalRef.current = false;
+    firstOutputTranscriptReceivedRef.current = false;
   }
 
   function flushQueuedOutputTranscript() {
@@ -318,10 +501,10 @@ function App() {
     const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
 
     if (options?.final) {
-      return Math.max(520, Math.min(2200, Math.round(bufferedMs * 0.74 + 260)));
+      return Math.max(900, Math.min(2800, Math.round(bufferedMs * 1.04 + 520)));
     }
 
-    return Math.max(900, Math.min(2800, Math.round(bufferedMs * 0.92 + 420)));
+    return Math.max(1500, Math.min(3800, Math.round(bufferedMs * 1.2 + 920)));
   }
 
   function scheduleOutputTranscriptFlush(options?: { final?: boolean }) {
@@ -362,6 +545,8 @@ function App() {
     pendingTranscriptRef.current = '';
     handledQuestionTranscriptRef.current = '';
     outputTranscriptIsFinalRef.current = false;
+    firstAudioChunkReceivedRef.current = false;
+    clearStartupAudioTimeout();
     setLiveTranscript(label);
     setLatestOutputTranscript('');
     playerRef.current?.reset();
@@ -376,6 +561,7 @@ function App() {
     clearTranscriptQueue();
     clearAutoAdvance();
     clearTurnCompletionFallback();
+    clearStartupAudioTimeout();
     currentTurnKindRef.current = null;
   }
 
@@ -451,6 +637,7 @@ function App() {
   function applyNavigationCommand(targetIndex: number) {
     interruptCurrentTurn();
     hasNarratedSlideRef.current = null;
+    setLiveTurnStateValue('resuming');
     setCurrentSlideIndex(targetIndex);
     setLiveTranscript(`Moving to slide ${targetIndex + 1}.`);
     setLatestOutputTranscript('');
@@ -530,6 +717,8 @@ function App() {
         onopen: () => {
           setConnectionState('ready');
           setIsSwitchingVoice(false);
+          setLiveTurnStateValue('idle');
+          logLiveEvent('session_opened', `Live session ready with ${voiceName}.`);
         },
         onmessage: (message: LiveServerMessage) => {
           handleMessage(message);
@@ -538,6 +727,9 @@ function App() {
           setConnectionState('error');
           setIsSwitchingVoice(false);
           setConnectionError(event.message);
+          setLiveTurnStateValue('error');
+          clearStartupAudioTimeout();
+          logLiveEvent('session_error', event.message || 'Unknown session error.');
         },
         onclose: (event: CloseEvent) => {
           if (suppressNextCloseErrorRef.current) {
@@ -550,6 +742,12 @@ function App() {
             event.reason
               ? `Live session closed: ${event.reason}`
               : `Live session closed (${event.code}).`,
+          );
+          setLiveTurnStateValue('error');
+          clearStartupAudioTimeout();
+          logLiveEvent(
+            'session_closed',
+            event.reason ? event.reason : `Session closed (${event.code}).`,
           );
         },
       },
@@ -566,6 +764,7 @@ function App() {
       const presentation = (await presentationResponse.json()) as PresentationPayload;
       setPresentationTitle(presentation.title);
       setSlides(presentation.slides);
+      currentSlideIndexRef.current = 0;
     }
   }
 
@@ -603,6 +802,7 @@ function App() {
         }
         setConnectionState('error');
         setConnectionError(error instanceof Error ? error.message : 'Unable to connect.');
+        setLiveTurnStateValue('error');
       }
     }
 
@@ -613,6 +813,7 @@ function App() {
       clearTranscriptQueue();
       clearAutoAdvance();
       clearQuestionCommandTimeout();
+      clearStartupAudioTimeout();
       sessionRef.current?.close();
       recorderRef.current?.dispose().catch(() => undefined);
       playerRef.current?.dispose().catch(() => undefined);
@@ -638,6 +839,7 @@ function App() {
       setIsAuthenticated(true);
       setPasscode('');
       setConnectionState('connecting');
+      setConnectionError('');
       await openLiveSession(selectedVoiceRef.current, { loadPresentation: true });
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Unable to unlock.');
@@ -681,6 +883,22 @@ function App() {
 
     currentTurnKindRef.current = kind;
     resetTurnUi(kind === 'narration' ? 'Beforest is speaking...' : 'Beforest is responding...');
+    if (kind === 'narration') {
+      setLiveTurnStateValue('starting');
+      logLiveEvent(
+        'narration_requested',
+        slidesRef.current[currentSlideIndexRef.current]
+          ? `Narrating ${slidesRef.current[currentSlideIndexRef.current]?.title}.`
+          : 'Narration requested.',
+      );
+      beginNarrationTracking();
+    } else if (kind === 'question') {
+      setLiveTurnStateValue('answering');
+      logLiveEvent(
+        'question_requested',
+        text.length > 120 ? `${text.slice(0, 117)}...` : text,
+      );
+    }
     sessionRef.current.sendClientContent({
       turns: [
         {
@@ -704,6 +922,7 @@ function App() {
   function scheduleNextSlide(delayMs = 2200) {
     clearAutoAdvance();
     if (currentSlideIndexRef.current >= slidesRef.current.length - 1) {
+      setLiveTurnStateValue('idle');
       return;
     }
 
@@ -715,8 +934,11 @@ function App() {
   function scheduleNextSlideAfterPlayback() {
     clearAutoAdvance();
     if (currentSlideIndexRef.current >= slidesRef.current.length - 1) {
+      setLiveTurnStateValue('idle');
       return;
     }
+
+    setLiveTurnStateValue('draining');
 
     const startedAt = performance.now();
 
@@ -727,6 +949,7 @@ function App() {
       const timedOut = elapsedMs >= 12_000;
 
       if (drained || timedOut) {
+        setLiveTurnStateValue('resuming');
         scheduleNextSlide(900);
         return;
       }
@@ -740,12 +963,30 @@ function App() {
   function continueAfterQuestion(delayMs = 1400) {
     clearAutoAdvance();
     if (currentSlideIndexRef.current >= slidesRef.current.length - 1) {
+      setLiveTurnStateValue('idle');
       return;
     }
 
-    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
-      setCurrentSlideIndex((previous) => previous + 1);
-    }, delayMs);
+    setLiveTurnStateValue('resuming');
+    const startedAt = performance.now();
+
+    const waitForDrain = () => {
+      const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+      const elapsedMs = performance.now() - startedAt;
+      const drained = bufferedMs <= 180;
+      const timedOut = elapsedMs >= 12_000;
+
+      if (drained || timedOut) {
+        autoAdvanceTimeoutRef.current = window.setTimeout(() => {
+          setCurrentSlideIndex((previous) => previous + 1);
+        }, delayMs);
+        return;
+      }
+
+      autoAdvanceTimeoutRef.current = window.setTimeout(waitForDrain, 180);
+    };
+
+    waitForDrain();
   }
 
   async function applyQuestionRouting(question: string) {
@@ -823,9 +1064,12 @@ function App() {
     const turnKind = currentTurnKindRef.current;
     currentTurnKindRef.current = null;
     clearTurnCompletionFallback();
+    logLiveEvent('turn_complete', turnKind ? `${turnKind} turn completed.` : 'Turn completed.');
     if (turnKind === 'narration') {
       if (currentSlideIndexRef.current < slidesRef.current.length - 1) {
         scheduleNextSlideAfterPlayback();
+      } else {
+        setLiveTurnStateValue('idle');
       }
       return;
     }
@@ -835,6 +1079,7 @@ function App() {
       pendingTranscriptRef.current = '';
       const targetIndex = parseNavigationCommand(question);
       if (targetIndex !== null && !Number.isNaN(targetIndex)) {
+        setLiveTurnStateValue('resuming');
         applyNavigationCommand(targetIndex);
         return;
       }
@@ -857,6 +1102,27 @@ function App() {
         typeof part.inlineData.mimeType === 'string' &&
         part.inlineData.mimeType.startsWith('audio/pcm')
       ) {
+        if (!firstAudioChunkReceivedRef.current) {
+          firstAudioChunkReceivedRef.current = true;
+          narrationRetryCountRef.current = 0;
+          clearStartupAudioTimeout();
+          setUiError((previous) =>
+            previous.startsWith('Voice did not start') || previous.startsWith('Voice stalled')
+              ? ''
+              : previous,
+          );
+          if (currentTurnKindRef.current === 'narration') {
+            setLiveTurnStateValue('narrating');
+          } else if (currentTurnKindRef.current === 'question') {
+            setLiveTurnStateValue('answering');
+          }
+          logLiveEvent(
+            'first_audio_chunk',
+            currentTurnKindRef.current === 'narration'
+              ? 'First narration audio chunk received.'
+              : 'First response audio chunk received.',
+          );
+        }
         if (!playerRef.current) {
           playerRef.current = createPcmPlayer();
         }
@@ -878,6 +1144,13 @@ function App() {
 
     const outputTranscript = serverContent?.outputTranscription?.text;
     if (outputTranscript) {
+      if (!firstOutputTranscriptReceivedRef.current) {
+        firstOutputTranscriptReceivedRef.current = true;
+        logLiveEvent(
+          'first_output_transcript',
+          outputTranscript.length > 120 ? `${outputTranscript.slice(0, 117)}...` : outputTranscript,
+        );
+      }
       queuedOutputTranscriptRef.current = mergeOutputTranscriptSnapshot(
         queuedOutputTranscriptRef.current,
         outputTranscript,
@@ -890,11 +1163,17 @@ function App() {
       clearTranscriptQueue();
       clearAutoAdvance();
       clearTurnCompletionFallback();
+      clearStartupAudioTimeout();
+      logLiveEvent('interrupted', 'Model output was interrupted.');
     }
 
     if (serverContent?.generationComplete) {
       outputTranscriptIsFinalRef.current = true;
       scheduleOutputTranscriptFlush({ final: true });
+      if (currentTurnKindRef.current === 'narration') {
+        setLiveTurnStateValue('draining');
+      }
+      logLiveEvent('generation_complete', 'Model generation finished.');
       scheduleNarrationCompletionFallback();
     }
 
@@ -905,15 +1184,30 @@ function App() {
     }
   }
 
-  async function unlockAudioPlayback(options?: { required?: boolean }) {
+  async function unlockAudioPlayback(options?: { required?: boolean; reason?: string }) {
     if (!playerRef.current) {
       playerRef.current = createPcmPlayer();
     }
 
+    logLiveEvent(
+      'playback_unlock_attempted',
+      `Unlock requested for ${options?.reason ?? 'general playback'}.`,
+    );
+
     try {
       await playerRef.current.prepare();
+      logLiveEvent(
+        'playback_unlock_succeeded',
+        `Playback unlocked for ${options?.reason ?? 'general playback'}.`,
+      );
       return true;
     } catch (error) {
+      logLiveEvent(
+        'playback_unlock_failed',
+        error instanceof Error
+          ? error.message
+          : `Playback unlock failed for ${options?.reason ?? 'general playback'}.`,
+      );
       if (options?.required) {
         throw error;
       }
@@ -944,10 +1238,15 @@ function App() {
       return;
     }
 
-    await unlockAudioPlayback({ required: true });
+    if (!slidesRef.current.length || !slidesRef.current[currentSlideIndexRef.current]) {
+      throw new Error('Presentation is still loading. Please wait a moment and try again.');
+    }
+
+    await unlockAudioPlayback({ required: true, reason: 'begin' });
     isActivatedRef.current = true;
     setIsActivated(true);
     hasNarratedSlideRef.current = null;
+    narrationRetryCountRef.current = 0;
   }
 
   async function startRecording() {
@@ -959,11 +1258,12 @@ function App() {
     if (!isActivatedRef.current) {
       return;
     } else {
-      await unlockAudioPlayback({ required: true });
+      await unlockAudioPlayback({ required: true, reason: 'question recording' });
     }
 
     clearAutoAdvance();
     currentTurnKindRef.current = 'question';
+    setLiveTurnStateValue('listening');
     resetTurnUi('Listening...');
 
     try {
@@ -982,10 +1282,12 @@ function App() {
       isRecordingRef.current = true;
       setIsRecording(true);
       setUiError('');
+      logLiveEvent('recording_started', 'Microphone capture started.');
     } catch (error) {
       setUiError(error instanceof Error ? error.message : 'Microphone access failed.');
       currentTurnKindRef.current = null;
       setLiveTranscript('');
+      setLiveTurnStateValue('error');
     }
   }
 
@@ -998,6 +1300,8 @@ function App() {
     sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
     isRecordingRef.current = false;
     setIsRecording(false);
+    setLiveTurnStateValue('answering');
+    logLiveEvent('recording_stopped', 'Microphone capture stopped; waiting for answer.');
     clearQuestionCommandTimeout();
     questionCommandTimeoutRef.current = window.setTimeout(() => {
       maybeHandleQuestionCommand(pendingTranscriptRef.current);
@@ -1016,18 +1320,21 @@ function App() {
     setConnectionError('');
     hasNarratedSlideRef.current = null;
     resetTurnUi(`Switching to ${nextVoice}...`);
+    setLiveTurnStateValue('starting');
+    logLiveEvent('voice_changed', `Switching voice to ${nextVoice}.`);
     suppressNextCloseErrorRef.current = true;
     sessionRef.current?.close();
 
     try {
       await playerRef.current?.dispose();
       playerRef.current = null;
-      await unlockAudioPlayback();
+      await unlockAudioPlayback({ reason: 'voice switch' });
       await openLiveSession(nextVoice);
     } catch (error) {
       setConnectionState('error');
       setIsSwitchingVoice(false);
       setConnectionError(error instanceof Error ? error.message : 'Unable to switch voice.');
+      setLiveTurnStateValue('error');
     }
   }
 
@@ -1146,12 +1453,14 @@ function App() {
   }
 
   async function handleBegin() {
-    if (isStarting || connectionState !== 'ready') {
+    if (isStarting || connectionState !== 'ready' || !currentSlide) {
       return;
     }
 
     setIsStarting(true);
     setUiError('');
+    setLiveTurnStateValue('starting');
+    logLiveEvent('begin_clicked', 'Begin pressed.');
 
     try {
       await activatePresentation();
@@ -1160,6 +1469,7 @@ function App() {
       setUiError(
         error instanceof Error ? error.message : 'Unable to begin the presentation.',
       );
+      setLiveTurnStateValue('error');
     } finally {
       setIsStarting(false);
     }
@@ -1278,9 +1588,11 @@ function App() {
                 type="button"
                 className="begin-button"
                 onClick={() => void handleBegin()}
-                disabled={connectionState !== 'ready' || isStarting}
+                disabled={connectionState !== 'ready' || isStarting || !currentSlide}
               >
-                <span>{isStarting ? 'Starting...' : 'Begin'}</span>
+                <span>
+                  {isStarting ? 'Starting...' : currentSlide ? 'Begin' : 'Loading...'}
+                </span>
                 <ArrowUpRight size={16} />
               </button>
             </div>
@@ -1295,6 +1607,57 @@ function App() {
             >
               <Question size={16} weight="bold" />
             </button>
+          ) : null}
+
+          {isDebugMode ? (
+            <>
+              <button
+                type="button"
+                className="debug-toggle"
+                aria-label={isDebugPanelOpen ? 'Hide live debug panel' : 'Show live debug panel'}
+                onClick={() => setIsDebugPanelOpen((previous) => !previous)}
+              >
+                Debug
+              </button>
+              {isDebugPanelOpen ? (
+                <aside className="debug-panel" aria-label="Live debug panel">
+                  <div className="debug-panel-header">
+                    <div>
+                      <p className="debug-panel-kicker">Live Trace</p>
+                      <strong>{liveTurnState}</strong>
+                    </div>
+                    <button
+                      type="button"
+                      className="debug-panel-close"
+                      aria-label="Close live debug panel"
+                      onClick={() => setIsDebugPanelOpen(false)}
+                    >
+                      <X size={14} weight="bold" />
+                    </button>
+                  </div>
+                  <div className="debug-panel-meta">
+                    <span>{connectionState}</span>
+                    <span>{currentSlide ? `Slide ${currentSlideIndex + 1}` : 'No slide'}</span>
+                    <span>{currentTurnKindRef.current ?? 'no turn'}</span>
+                  </div>
+                  <div className="debug-event-list">
+                    {liveEvents.length ? (
+                      [...liveEvents].reverse().map((event) => (
+                        <article key={event.id} className="debug-event-item">
+                          <div className="debug-event-meta">
+                            <span>{event.at.slice(11, 19)}</span>
+                            <span>{event.type}</span>
+                          </div>
+                          <p>{event.detail}</p>
+                        </article>
+                      ))
+                    ) : (
+                      <p className="debug-event-empty">No live events yet.</p>
+                    )}
+                  </div>
+                </aside>
+              ) : null}
+            </>
           ) : null}
 
           {isHelpOpen ? (

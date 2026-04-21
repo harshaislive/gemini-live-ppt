@@ -9,7 +9,7 @@ import { beforestBrandRules, presentationSlides, presentationTitle } from './pre
 
 const app = express();
 const port = Number(process.env.PORT ?? 3001);
-const model = process.env.GEMINI_LIVE_MODEL ?? 'gemini-2.5-flash-native-audio-preview-12-2025';
+const model = process.env.GEMINI_LIVE_MODEL ?? 'gemini-3.1-flash-live-preview';
 const isProduction = process.env.NODE_ENV === 'production';
 const authCookieName = 'beforest_auth';
 
@@ -176,14 +176,9 @@ app.get('/api/live-token', authRequired, async (_req, res) => {
             },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
-            enableAffectiveDialog: true,
-            proactivity: {
-              proactiveAudio: true,
-            },
             realtimeInputConfig: {
               automaticActivityDetection: {
-                prefixPaddingMs: 140,
-                silenceDurationMs: 520,
+                disabled: true,
               },
             },
           },

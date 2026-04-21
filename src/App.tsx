@@ -127,26 +127,22 @@ function buildLiveCaption(transcript: string) {
   }
 
   if (trailingSentence) {
+    const trailingWords = trailingSentence.split(/\s+/).filter(Boolean);
+    if (trailingWords.length < 5) {
+      return '';
+    }
+
+    return trailingWords.length > 16
+      ? trailingWords.slice(trailingWords.length - 16).join(' ')
+      : trailingSentence;
+  }
+
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 5) {
     return '';
   }
 
-  return '';
-}
-
-function estimateNarrationDurationMs(slide: PresentationSlide | null) {
-  if (!slide) {
-    return 18000;
-  }
-
-  const words = countWords(slide.script);
-  const wordsPerMinute = slide.kind === 'quote' ? 110 : 135;
-  const estimatedMs = (words / wordsPerMinute) * 60_000;
-
-  if (slide.kind === 'quote') {
-    return Math.max(5000, Math.min(9000, estimatedMs));
-  }
-
-  return Math.max(12000, Math.min(30000, estimatedMs));
+  return words.length > 16 ? words.slice(words.length - 16).join(' ') : text;
 }
 
 function isSystemCaptionLabel(text: string) {
@@ -212,7 +208,7 @@ function App() {
       })),
     [isMobile, slides],
   );
-  const sceneEyebrow = isActivated ? `${presentationTitle} • Scene ${currentSlideIndex + 1}` : presentationTitle;
+  const sceneEyebrow = presentationTitle;
   const sceneHeading = isActivated ? currentSlide?.title ?? PRE_BEGIN_HOOK : PRE_BEGIN_HOOK;
   const sceneNote = isActivated ? currentSlide?.note ?? PRE_BEGIN_NOTE : PRE_BEGIN_NOTE;
 
@@ -253,7 +249,7 @@ function App() {
       captionTimeoutRef.current = null;
     }
 
-    const delayMs = latestOutputTranscript.trim() ? 80 : 0;
+    const delayMs = latestOutputTranscript.trim() ? 220 : 0;
     captionTimeoutRef.current = window.setTimeout(() => {
       setDisplaySubtitle(nextSubtitle);
       setIsSubtitleVisible(Boolean(nextSubtitle));
@@ -349,7 +345,7 @@ function App() {
     clearTurnCompletionFallback();
     const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
     const current = slidesRef.current[currentSlideIndexRef.current];
-    const settleMs = current?.kind === 'quote' ? 1100 : 1500;
+    const settleMs = current?.kind === 'quote' ? 1700 : 2300;
     const delayMs = Math.max(settleMs, Math.round(bufferedMs + settleMs));
 
     turnCompletionFallbackTimeoutRef.current = window.setTimeout(() => {
@@ -521,14 +517,9 @@ function App() {
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        enableAffectiveDialog: true,
-        proactivity: {
-          proactiveAudio: true,
-        },
         realtimeInputConfig: {
           automaticActivityDetection: {
-            prefixPaddingMs: 140,
-            silenceDurationMs: 520,
+            disabled: true,
           },
         },
       },
@@ -724,12 +715,28 @@ function App() {
   }
 
   function scheduleNextSlideAfterPlayback() {
-    const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
-    const current = slidesRef.current[currentSlideIndexRef.current];
-    const estimatedMs = estimateNarrationDurationMs(current);
-    const settleMs = current?.kind === 'quote' ? 700 : 1050;
-    const delayMs = Math.max(settleMs, Math.round(bufferedMs + Math.min(estimatedMs * 0.08, 1200)));
-    scheduleNextSlide(delayMs);
+    clearAutoAdvance();
+    if (currentSlideIndexRef.current >= slidesRef.current.length - 1) {
+      return;
+    }
+
+    const startedAt = performance.now();
+
+    const waitForDrain = () => {
+      const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+      const elapsedMs = performance.now() - startedAt;
+      const drained = bufferedMs <= 180;
+      const timedOut = elapsedMs >= 12_000;
+
+      if (drained || timedOut) {
+        scheduleNextSlide(900);
+        return;
+      }
+
+      autoAdvanceTimeoutRef.current = window.setTimeout(waitForDrain, 180);
+    };
+
+    waitForDrain();
   }
 
   async function applyQuestionRouting(question: string) {
@@ -946,6 +953,7 @@ function App() {
       });
 
       recorderRef.current = recorder;
+      session.sendRealtimeInput({ activityStart: {} });
       await recorder.start();
       isRecordingRef.current = true;
       setIsRecording(true);
@@ -963,7 +971,7 @@ function App() {
     }
 
     await recorderRef.current?.stop();
-    sessionRef.current?.sendRealtimeInput({ audioStreamEnd: true });
+    sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
     isRecordingRef.current = false;
     setIsRecording(false);
     clearQuestionCommandTimeout();

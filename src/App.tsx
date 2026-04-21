@@ -35,6 +35,13 @@ interface QuestionRouteResponse {
   imageFromSlideId: string | null;
 }
 
+interface TurnTimeline {
+  kind: TurnKind;
+  startedAt: number;
+  estimatedTotalMs: number;
+  serverComplete: boolean;
+}
+
 const VOICE_OPTIONS = ['Zephyr', 'Sulafat', 'Algieba', 'Schedar', 'Achird', 'Kore'] as const;
 const PRE_BEGIN_HOOK = '30 nights a year where recovery becomes real.';
 const PRE_BEGIN_NOTE =
@@ -110,22 +117,43 @@ function buildLiveCaption(transcript: string) {
   }
 
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-  if (sentences.length >= 2) {
-    const combined = sentences.slice(-2).join(' ').trim();
+  const hasCompletedEnding = /[.!?]["']?$/.test(text);
+  const completeSentences = hasCompletedEnding ? sentences : sentences.slice(0, -1);
+  const trailingSentence = hasCompletedEnding ? '' : sentences.at(-1)?.trim() ?? '';
+
+  if (completeSentences.length >= 2) {
+    const combined = completeSentences.slice(-2).join(' ').trim();
     if (combined.length <= 148 && countWords(combined) <= 22) {
       return combined;
     }
   }
 
-  const lastSentence = sentences.at(-1)?.trim();
+  const lastSentence = completeSentences.at(-1)?.trim();
   if (lastSentence) {
     return lastSentence;
   }
 
-  const clauses = text.split(/(?<=[,;:])\s+/).filter(Boolean);
-  const tail = clauses.at(-1)?.trim() ?? text;
-  const words = tail.split(/\s+/).filter(Boolean);
-  return words.length > 14 ? words.slice(-14).join(' ') : tail;
+  if (trailingSentence) {
+    return trailingSentence;
+  }
+
+  return text;
+}
+
+function estimateNarrationDurationMs(slide: PresentationSlide | null) {
+  if (!slide) {
+    return 18000;
+  }
+
+  const words = countWords(slide.script);
+  const wordsPerMinute = slide.kind === 'quote' ? 110 : 135;
+  const estimatedMs = (words / wordsPerMinute) * 60_000;
+
+  if (slide.kind === 'quote') {
+    return Math.max(5000, Math.min(9000, estimatedMs));
+  }
+
+  return Math.max(12000, Math.min(30000, estimatedMs));
 }
 
 function isSystemCaptionLabel(text: string) {
@@ -156,6 +184,7 @@ function App() {
   const [uiError, setUiError] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [currentTurnProgress, setCurrentTurnProgress] = useState(0);
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
@@ -173,6 +202,8 @@ function App() {
   const currentSlideIndexRef = useRef(0);
   const isActivatedRef = useRef(false);
   const handledQuestionTranscriptRef = useRef('');
+  const turnTimelineRef = useRef<TurnTimeline | null>(null);
+  const turnProgressRafRef = useRef<number | null>(null);
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
@@ -215,11 +246,6 @@ function App() {
   }, [isActivated]);
 
   useEffect(() => {
-    setDisplaySubtitle('');
-    setIsSubtitleVisible(false);
-  }, [currentSlide?.id]);
-
-  useEffect(() => {
     let nextSubtitle = '';
 
     if (latestOutputTranscript.trim()) {
@@ -257,6 +283,77 @@ function App() {
     }
   }
 
+  function stopTurnProgressLoop(options?: { preserveProgress?: boolean }) {
+    if (turnProgressRafRef.current !== null) {
+      window.cancelAnimationFrame(turnProgressRafRef.current);
+      turnProgressRafRef.current = null;
+    }
+    turnTimelineRef.current = null;
+    if (!options?.preserveProgress) {
+      setCurrentTurnProgress(0);
+    }
+  }
+
+  function tickTurnProgress() {
+    const timeline = turnTimelineRef.current;
+    if (!timeline || timeline.kind !== 'narration') {
+      stopTurnProgressLoop();
+      return;
+    }
+
+    const now = performance.now();
+    const elapsedMs = now - timeline.startedAt;
+    const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+    timeline.estimatedTotalMs = Math.max(timeline.estimatedTotalMs, elapsedMs + bufferedMs);
+
+    let progress = Math.min(0.985, elapsedMs / timeline.estimatedTotalMs);
+    if (timeline.serverComplete) {
+      const totalMs = Math.max(timeline.estimatedTotalMs, elapsedMs + bufferedMs);
+      progress = totalMs > 0 ? Math.min(1, elapsedMs / totalMs) : 1;
+      if (bufferedMs <= 40) {
+        progress = 1;
+      }
+    }
+
+    setCurrentTurnProgress(progress);
+
+    if (timeline.serverComplete && progress >= 1) {
+      stopTurnProgressLoop({ preserveProgress: true });
+      return;
+    }
+
+    turnProgressRafRef.current = window.requestAnimationFrame(tickTurnProgress);
+  }
+
+  function startNarrationTimeline(slide: PresentationSlide | null) {
+    stopTurnProgressLoop();
+    turnTimelineRef.current = {
+      kind: 'narration',
+      startedAt: performance.now(),
+      estimatedTotalMs: estimateNarrationDurationMs(slide),
+      serverComplete: false,
+    };
+    setCurrentTurnProgress(0.02);
+    turnProgressRafRef.current = window.requestAnimationFrame(tickTurnProgress);
+  }
+
+  function markNarrationTimelineComplete() {
+    const timeline = turnTimelineRef.current;
+    if (!timeline || timeline.kind !== 'narration') {
+      return;
+    }
+
+    timeline.serverComplete = true;
+    timeline.estimatedTotalMs = Math.max(
+      timeline.estimatedTotalMs,
+      performance.now() - timeline.startedAt + (playerRef.current?.getBufferedMs() ?? 0),
+    );
+
+    if (turnProgressRafRef.current === null) {
+      turnProgressRafRef.current = window.requestAnimationFrame(tickTurnProgress);
+    }
+  }
+
   function resetTurnUi(label: string) {
     pendingTranscriptRef.current = '';
     handledQuestionTranscriptRef.current = '';
@@ -266,6 +363,7 @@ function App() {
     clearTranscriptQueue();
     clearAutoAdvance();
     clearQuestionCommandTimeout();
+    stopTurnProgressLoop();
   }
 
   function interruptCurrentTurn() {
@@ -273,6 +371,7 @@ function App() {
     clearTranscriptQueue();
     clearAutoAdvance();
     currentTurnKindRef.current = null;
+    stopTurnProgressLoop();
   }
 
   function parseNavigationCommand(transcript: string) {
@@ -509,6 +608,7 @@ function App() {
       clearTranscriptQueue();
       clearAutoAdvance();
       clearQuestionCommandTimeout();
+      stopTurnProgressLoop();
       sessionRef.current?.close();
       recorderRef.current?.dispose().catch(() => undefined);
       playerRef.current?.dispose().catch(() => undefined);
@@ -578,6 +678,9 @@ function App() {
 
     currentTurnKindRef.current = kind;
     resetTurnUi(kind === 'narration' ? 'Beforest is speaking...' : 'Beforest is responding...');
+    if (kind === 'narration') {
+      startNarrationTimeline(slidesRef.current[currentSlideIndexRef.current] ?? null);
+    }
     sessionRef.current.sendRealtimeInput({ text });
   }
 
@@ -599,6 +702,12 @@ function App() {
     autoAdvanceTimeoutRef.current = window.setTimeout(() => {
       setCurrentSlideIndex((previous) => previous + 1);
     }, delayMs);
+  }
+
+  function scheduleNextSlideAfterPlayback() {
+    const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+    const delayMs = Math.max(1400, Math.round(bufferedMs + 550));
+    scheduleNextSlide(delayMs);
   }
 
   async function applyQuestionRouting(question: string) {
@@ -673,8 +782,9 @@ function App() {
     const turnKind = currentTurnKindRef.current;
     currentTurnKindRef.current = null;
     if (turnKind === 'narration') {
+      markNarrationTimelineComplete();
       if (currentSlideIndexRef.current < slidesRef.current.length - 1) {
-        scheduleNextSlide(2200);
+        scheduleNextSlideAfterPlayback();
       }
       return;
     }
@@ -727,7 +837,7 @@ function App() {
     const outputTranscript = serverContent?.outputTranscription?.text;
     if (outputTranscript) {
       const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
-      const delayMs = Math.min(140, bufferedMs * 0.08);
+      const delayMs = Math.max(0, Math.round(bufferedMs - 180));
       const timeoutId = window.setTimeout(() => {
         setLatestOutputTranscript((previous) =>
           mergeOutputTranscriptSnapshot(previous, outputTranscript),
@@ -740,6 +850,7 @@ function App() {
       playerRef.current?.reset();
       clearTranscriptQueue();
       clearAutoAdvance();
+      stopTurnProgressLoop();
     }
 
     if (serverContent?.turnComplete) {
@@ -1046,7 +1157,7 @@ function App() {
                         index < currentSlideIndex
                           ? 'scaleX(1)'
                           : index === currentSlideIndex
-                            ? 'scaleX(0.4)'
+                            ? `scaleX(${currentTurnProgress})`
                             : 'scaleX(0)',
                     }}
                   />

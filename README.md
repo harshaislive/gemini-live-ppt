@@ -1,10 +1,10 @@
-# Beforest Pipecat Gemini Live
+# Beforest LiveKit Gemini Live
 
-A Beforest editorial presentation agent rebuilt on top of the Pipecat `gemini-live-web-starter`.
+A Beforest editorial presentation agent rebuilt around LiveKit Agents and Gemini Live.
 
 ## What this repo now contains
-- `client/` — Next.js editorial UI wrapped around Pipecat + Daily
-- `server/` — Pipecat Gemini Live bot with Beforest grounding and tool calling
+- `client/` — Next.js editorial UI connected to LiveKit Sessions
+- `server/` — LiveKit Gemini Live agent with Beforest grounding and tool calling
 - `docs/RESEARCH_PLAN.md` — migration rationale
 - `docs/IMPLEMENTATION_CONCEPT.md` — architecture and UX flow
 
@@ -16,7 +16,7 @@ A Beforest editorial presentation agent rebuilt on top of the Pipecat `gemini-li
 - Auto-start Gemini Live opening turn
 - `retrieve_beforest_knowledge` tool
 - `show_curated_image` tool
-- Server-driven visual updates over RTVI server messages
+- Server-driven visual updates over LiveKit RPC
 - Approved knowledge docs and curated image manifest
 
 ## Before you test
@@ -24,21 +24,23 @@ Add env files first.
 
 ### Server
 Create `server/.env` from `server/env.example` and set:
+- `LIVEKIT_URL`
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`
 - `GOOGLE_API_KEY`
-- `DAILY_API_KEY` or `DAILY_ROOM_URL`
 - optional `GOOGLE_VOICE_ID`
 
 ### Client
 Create `client/.env.local` from `client/env.example`.
-For local development the default localhost value is already fine if your Pipecat server is running locally.
+Use the same LiveKit project values as the server, plus the public agent/frontend names if you want to override the defaults.
 
 ## Run locally
-### 1. Start the bot
+### 1. Start the agent
 ```bash
 cd server
 cp env.example .env
 uv sync
-uv run bot.py --transport daily
+uv run python agent.py dev
 ```
 
 ### 2. Start the client
@@ -52,5 +54,5 @@ npm run dev
 Open `http://localhost:3000` and click **Begin live walkthrough**.
 
 ## Notes
-- The old app remains in `../gemini-live-ppt` for reference.
-- This repo intentionally keeps the realtime stack from Pipecat and the visual taste from your previous Beforest UI.
+- This branch keeps the Beforest visual shell, content files, curated images, and 10% narrative while replacing the Pipecat transport layer with LiveKit.
+- Legacy Pipecat files still exist in the repo for reference during migration, but the new path is `client/app/api/token/route.ts` plus `server/agent.py`.

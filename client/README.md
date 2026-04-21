@@ -1,15 +1,14 @@
-# Voice UI Kit Client
+# Beforest LiveKit Client
 
-A Next.js application showcasing screensharing with the Voice UI Kit and Gemini Live Multimodal model.
+A Next.js application for the Beforest editorial voice experience on LiveKit Agents.
 
 ## Features
 
-- **Real-time conversation** with Gemini via Pipecat
-- **Screen sharing** (desktop) with resizable panels
-- **Device controls** for camera, microphone, and speakers
-- **Live transcripts** for both user and bot
-- **Audio visualization** of bot responses
-- **Event logs panel** with toggle and resize capabilities
+- **Real-time conversation** with Gemini via LiveKit Agents
+- **Full-bleed editorial image stage** driven by agent RPC
+- **Hold-to-talk microphone UX** on top of a LiveKit room session
+- **Live subtitles** fed by room transcription events
+- **Beforest-specific visual shell** using the existing Arizona fonts and palette
 
 ## Quick Start
 
@@ -23,7 +22,7 @@ A Next.js application showcasing screensharing with the Voice UI Kit and Gemini 
 
    ```bash
    cp env.example .env.local
-   # Edit .env.local to connect to your bot deployed on Pipecat Cloud
+   # Edit .env.local with your LiveKit project values
    ```
 
 3. **Start development server**:
@@ -32,38 +31,41 @@ A Next.js application showcasing screensharing with the Voice UI Kit and Gemini 
    npm run dev
    ```
 
-4. **Open** [http://localhost:3000](http://localhost:3000) and click **Connect**
+4. **Open** [http://localhost:3000](http://localhost:3000) and click **Begin live walkthrough**
 
 ## Configuration
 
 ### Local Development
 
-The .env.local file automatically falls back to the `http://localhost:7860/start` endpoint, which will hit the bot's built-in FastAPI server and start a room. No changes are needed.
+The app uses `client/app/api/token/route.ts` to mint a development token against your LiveKit project and dispatch the configured agent.
 
-### Pipecat Cloud Deployment
+### Required Variables
 
-Set your agent credentials in `.env.local`:
+Set your LiveKit credentials in `.env.local`:
 
 ```bash
-BOT_START_URL=https://api.pipecat.daily.co/v1/public/<agent-name>/start
-BOT_START_PUBLIC_API_KEY=pk_your_api_key_here
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=...
+LIVEKIT_API_SECRET=...
+NEXT_PUBLIC_LIVEKIT_AGENT_NAME=beforest-guide
+NEXT_PUBLIC_LIVEKIT_FRONTEND_IDENTITY=frontend
 ```
 
 ## Usage
 
-1. **Connect** to establish a session with the bot
-2. **Select devices** using the dropdown menus
-3. **Share screen** (desktop only) to let Gemini analyze your screen
-4. **View transcripts** and **audio visualization** in real-time
-5. **Toggle logs** and **resize panels** as needed
+1. **Connect** to establish a LiveKit session with the agent
+2. **Listen** as the opening 10% narrative begins automatically
+3. **Hold the mic** to interrupt and ask grounded product questions
+4. **Watch the image stage** update when the agent calls `show_curated_image`
+5. **Follow the subtitle ribbon** for the latest spoken words
 
 ## Mobile Support
 
-Screen sharing is disabled on mobile devices. A warning message will be displayed.
+The layout remains mobile-safe. The current branch focuses on voice, visuals, and subtitles rather than screen sharing.
 
 ## Tech Stack
 
 - **Next.js 15.5.4** with React 19.1.0
-- **Pipecat Voice UI Kit** for real-time communication
+- **LiveKit client SDK** and **LiveKit React components**
 - **Tailwind CSS 4** for styling
 - **Lucide React** for icons

@@ -351,21 +351,28 @@ select:focus-visible {
   display: block;
   object-fit: cover;
   object-position: center center;
-  transform: scale(1.08);
-  filter: saturate(0.94) contrast(1) brightness(0.8);
-  will-change: transform;
+  transform: scale(1.1);
+  filter: saturate(0.95) contrast(1.02) brightness(0.84);
+  will-change: transform, filter;
+  transition:
+    transform 1800ms ease,
+    filter 1200ms ease;
 }
 
-.scene-layer.motion-0 img {
-  animation: imageDriftForward 18s ease-in-out infinite alternate;
+.scene-layer.active img {
+  filter: saturate(0.98) contrast(1.03) brightness(0.9);
 }
 
-.scene-layer.motion-1 img {
-  animation: imageDriftReverse 20s ease-in-out infinite alternate;
+.scene-layer.active.motion-0 img {
+  animation: imageDriftForward 13s ease-in-out infinite alternate both;
 }
 
-.scene-layer.motion-2 img {
-  animation: imageDriftLift 22s ease-in-out infinite alternate;
+.scene-layer.active.motion-1 img {
+  animation: imageDriftReverse 14s ease-in-out infinite alternate both;
+}
+
+.scene-layer.active.motion-2 img {
+  animation: imageDriftLift 15s ease-in-out infinite alternate both;
 }
 
 .portrait-overlay {
@@ -373,36 +380,6 @@ select:focus-visible {
   inset: 0;
   z-index: 5;
   padding: 18px 18px 24px;
-}
-
-.story-progress {
-  display: flex;
-  gap: 6px;
-}
-
-.story-segment {
-  position: relative;
-  flex: 1 1 0;
-  height: 2px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(243, 236, 222, 0.15);
-}
-
-.story-fill {
-  position: absolute;
-  inset: 0;
-  transform-origin: left center;
-  background: linear-gradient(90deg, rgba(243, 236, 222, 0.98), rgba(213, 177, 138, 0.82));
-  transition: transform 100ms linear;
-}
-
-.story-segment.done .story-fill {
-  transform: scaleX(1);
-}
-
-.story-segment.current .story-fill {
-  transform: scaleX(0);
 }
 
 .topic-heading {
@@ -619,24 +596,6 @@ select:focus-visible {
   background: rgba(33, 25, 19, 0.94);
 }
 
-.bottom-progress {
-  position: absolute;
-  right: 20px;
-  bottom: 22px;
-  left: 20px;
-  height: 1px;
-  background: rgba(243, 236, 222, 0.18);
-  overflow: hidden;
-  z-index: 7;
-}
-
-.bottom-progress span {
-  position: absolute;
-  inset: 0 auto 0 0;
-  background: linear-gradient(90deg, rgba(243, 236, 222, 0.98), rgba(213, 177, 138, 0.78));
-  transition: width 1200ms ease;
-}
-
 .inline-error {
   position: absolute;
   top: 78px;
@@ -838,28 +797,28 @@ select:focus-visible {
 
 @keyframes imageDriftForward {
   0% {
-    transform: scale(1.08) translate3d(-1.8%, -1.2%, 0);
+    transform: scale(1.1) translate3d(-2.4%, -1.8%, 0);
   }
   100% {
-    transform: scale(1.16) translate3d(2.6%, 1.8%, 0);
+    transform: scale(1.2) translate3d(3.2%, 2.4%, 0);
   }
 }
 
 @keyframes imageDriftReverse {
   0% {
-    transform: scale(1.09) translate3d(1.9%, -1.1%, 0);
+    transform: scale(1.11) translate3d(2.3%, -1.6%, 0);
   }
   100% {
-    transform: scale(1.17) translate3d(-2.4%, 1.9%, 0);
+    transform: scale(1.21) translate3d(-3.1%, 2.5%, 0);
   }
 }
 
 @keyframes imageDriftLift {
   0% {
-    transform: scale(1.08) translate3d(-0.4%, 1.8%, 0);
+    transform: scale(1.1) translate3d(-0.8%, 2.2%, 0);
   }
   100% {
-    transform: scale(1.17) translate3d(0.8%, -2.2%, 0);
+    transform: scale(1.2) translate3d(1.2%, -2.8%, 0);
   }
 }
 
@@ -926,12 +885,6 @@ select:focus-visible {
     bottom: 38px;
   }
 
-  .bottom-progress {
-    right: 14px;
-    bottom: 18px;
-    left: 14px;
-  }
-
   .screen-frame::before {
     inset: 10px;
   }
@@ -940,8 +893,6 @@ select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .ambient,
   .scene-layer img,
-  .story-fill,
-  .bottom-progress span,
   .subtitle-line,
   .center-mic {
     animation: none !important;

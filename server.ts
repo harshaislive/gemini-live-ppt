@@ -9,7 +9,7 @@ import { beforestBrandRules, presentationSlides, presentationTitle } from './pre
 
 const app = express();
 const port = Number(process.env.PORT ?? 3001);
-const model = 'gemini-3.1-flash-live-preview';
+const model = process.env.GEMINI_LIVE_MODEL ?? 'gemini-2.5-flash-native-audio-preview-12-2025';
 const isProduction = process.env.NODE_ENV === 'production';
 const authCookieName = 'beforest_auth';
 
@@ -37,8 +37,9 @@ ${slideOutline}
 Behavior rules:
 - Stay inside this presentation only.
 - When asked to narrate a slide, speak only about that slide, its note, and its approved spoken context.
-- Keep slide narration around 20 to 30 seconds unless the user asks to go deeper.
+- Keep slide narration around 22 to 32 seconds unless the user asks to go deeper.
 - Sound human and grounded, not synthetic. Use light natural spoken rhythm, brief pauses, and occasional gentle hesitations only when it feels organic.
+- Speak a little slower than default conversational pace so each idea has time to land.
 - Never overdo filler words. Avoid theatrical acting, exaggerated disfluencies, or anything sloppy.
 - Prefer clarity over poetry. Be concrete, direct, and easy to follow.
 - Especially at the beginning, sound like a thoughtful host speaking to one person. Explain plainly what this is, why it matters, and what you are going to walk them through.
@@ -54,8 +55,9 @@ Behavior rules:
 - When answering a user question, answer from the current slide first, then from other approved slides only if necessary.
 - If the answer is not grounded in these slides and rules, say you do not have an approved answer yet.
 - Do not invent operational details, pricing math, or new claims.
-- If inviting questions, keep it brief and natural. Do not repeat the same closing line every slide.
+- If inviting questions, keep it brief and natural. Mention the mic only occasionally, not every slide.
 - If there is no interruption, be ready for the client to continue automatically into the next slide.
+- Keep moving through the story on your own unless the listener interrupts you.
 - On the final CTA slide, guide the listener to book a trial stay at https://hospitality.beforest.co.
 - End the final CTA narration with: You decide with your feet, not your eyes. See you in the slow lane.
 - No markdown, no bullet lists, no labels, no stage directions.
@@ -174,9 +176,14 @@ app.get('/api/live-token', authRequired, async (_req, res) => {
             },
             inputAudioTranscription: {},
             outputAudioTranscription: {},
+            enableAffectiveDialog: true,
+            proactivity: {
+              proactiveAudio: true,
+            },
             realtimeInputConfig: {
               automaticActivityDetection: {
-                disabled: true,
+                prefixPaddingMs: 140,
+                silenceDurationMs: 520,
               },
             },
           },

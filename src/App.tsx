@@ -35,13 +35,6 @@ interface QuestionRouteResponse {
   imageFromSlideId: string | null;
 }
 
-interface TurnTimeline {
-  kind: TurnKind;
-  startedAt: number;
-  estimatedTotalMs: number;
-  serverComplete: boolean;
-}
-
 const VOICE_OPTIONS = ['Zephyr', 'Sulafat', 'Algieba', 'Schedar', 'Achird', 'Kore'] as const;
 const PRE_BEGIN_HOOK = '30 nights a year where recovery becomes real.';
 const PRE_BEGIN_NOTE =
@@ -123,7 +116,7 @@ function buildLiveCaption(transcript: string) {
 
   if (completeSentences.length >= 2) {
     const combined = completeSentences.slice(-2).join(' ').trim();
-    if (combined.length <= 148 && countWords(combined) <= 22) {
+    if (combined.length <= 172 && countWords(combined) <= 26) {
       return combined;
     }
   }
@@ -134,10 +127,21 @@ function buildLiveCaption(transcript: string) {
   }
 
   if (trailingSentence) {
+    const trailingWords = trailingSentence.split(/\s+/).filter(Boolean);
+    if (trailingWords.length < 8) {
+      return '';
+    }
+    if (trailingWords.length > 18) {
+      return trailingWords.slice(0, 18).join(' ');
+    }
     return trailingSentence;
   }
 
-  return text;
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 8) {
+    return '';
+  }
+  return words.length > 18 ? words.slice(0, 18).join(' ') : text;
 }
 
 function estimateNarrationDurationMs(slide: PresentationSlide | null) {
@@ -184,15 +188,14 @@ function App() {
   const [uiError, setUiError] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [currentTurnProgress, setCurrentTurnProgress] = useState(0);
-
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
   const playerRef = useRef<AudioPlayerHandle | null>(null);
-  const transcriptTimeoutsRef = useRef<number[]>([]);
+  const outputTranscriptTimeoutRef = useRef<number | null>(null);
   const autoAdvanceTimeoutRef = useRef<number | null>(null);
   const questionCommandTimeoutRef = useRef<number | null>(null);
   const pendingTranscriptRef = useRef('');
+  const queuedOutputTranscriptRef = useRef('');
   const isRecordingRef = useRef(false);
   const hasNarratedSlideRef = useRef<number | null>(null);
   const selectedVoiceRef = useRef<(typeof VOICE_OPTIONS)[number]>('Zephyr');
@@ -202,8 +205,7 @@ function App() {
   const currentSlideIndexRef = useRef(0);
   const isActivatedRef = useRef(false);
   const handledQuestionTranscriptRef = useRef('');
-  const turnTimelineRef = useRef<TurnTimeline | null>(null);
-  const turnProgressRafRef = useRef<number | null>(null);
+  const captionTimeoutRef = useRef<number | null>(null);
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
@@ -219,9 +221,6 @@ function App() {
       })),
     [isMobile, slides],
   );
-  const overallProgressPercent = slides.length
-    ? ((currentSlideIndex + (isActivated ? 1 : 0)) / slides.length) * 100
-    : 0;
   const sceneEyebrow = isActivated ? `${presentationTitle} • Scene ${currentSlideIndex + 1}` : presentationTitle;
   const sceneHeading = isActivated ? currentSlide?.title ?? PRE_BEGIN_HOOK : PRE_BEGIN_HOOK;
   const sceneNote = isActivated ? currentSlide?.note ?? PRE_BEGIN_NOTE : PRE_BEGIN_NOTE;
@@ -258,15 +257,49 @@ function App() {
       nextSubtitle = liveTranscript.trim();
     }
 
-    setDisplaySubtitle(nextSubtitle);
-    setIsSubtitleVisible(Boolean(nextSubtitle));
+    if (captionTimeoutRef.current !== null) {
+      window.clearTimeout(captionTimeoutRef.current);
+      captionTimeoutRef.current = null;
+    }
+
+    const delayMs = latestOutputTranscript.trim() ? 80 : 0;
+    captionTimeoutRef.current = window.setTimeout(() => {
+      setDisplaySubtitle(nextSubtitle);
+      setIsSubtitleVisible(Boolean(nextSubtitle));
+      captionTimeoutRef.current = null;
+    }, delayMs);
+
+    return () => {
+      if (captionTimeoutRef.current !== null) {
+        window.clearTimeout(captionTimeoutRef.current);
+        captionTimeoutRef.current = null;
+      }
+    };
   }, [isActivated, isRecording, latestOutputTranscript, liveTranscript]);
 
   function clearTranscriptQueue() {
-    for (const timeoutId of transcriptTimeoutsRef.current) {
-      window.clearTimeout(timeoutId);
+    if (outputTranscriptTimeoutRef.current !== null) {
+      window.clearTimeout(outputTranscriptTimeoutRef.current);
+      outputTranscriptTimeoutRef.current = null;
     }
-    transcriptTimeoutsRef.current = [];
+    queuedOutputTranscriptRef.current = '';
+  }
+
+  function flushQueuedOutputTranscript() {
+    if (outputTranscriptTimeoutRef.current !== null) {
+      window.clearTimeout(outputTranscriptTimeoutRef.current);
+      outputTranscriptTimeoutRef.current = null;
+    }
+
+    const queuedTranscript = queuedOutputTranscriptRef.current.trim();
+    if (!queuedTranscript) {
+      return;
+    }
+
+    queuedOutputTranscriptRef.current = '';
+    setLatestOutputTranscript((previous) =>
+      mergeOutputTranscriptSnapshot(previous, queuedTranscript),
+    );
   }
 
   function clearAutoAdvance() {
@@ -283,77 +316,6 @@ function App() {
     }
   }
 
-  function stopTurnProgressLoop(options?: { preserveProgress?: boolean }) {
-    if (turnProgressRafRef.current !== null) {
-      window.cancelAnimationFrame(turnProgressRafRef.current);
-      turnProgressRafRef.current = null;
-    }
-    turnTimelineRef.current = null;
-    if (!options?.preserveProgress) {
-      setCurrentTurnProgress(0);
-    }
-  }
-
-  function tickTurnProgress() {
-    const timeline = turnTimelineRef.current;
-    if (!timeline || timeline.kind !== 'narration') {
-      stopTurnProgressLoop();
-      return;
-    }
-
-    const now = performance.now();
-    const elapsedMs = now - timeline.startedAt;
-    const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
-    timeline.estimatedTotalMs = Math.max(timeline.estimatedTotalMs, elapsedMs + bufferedMs);
-
-    let progress = Math.min(0.985, elapsedMs / timeline.estimatedTotalMs);
-    if (timeline.serverComplete) {
-      const totalMs = Math.max(timeline.estimatedTotalMs, elapsedMs + bufferedMs);
-      progress = totalMs > 0 ? Math.min(1, elapsedMs / totalMs) : 1;
-      if (bufferedMs <= 40) {
-        progress = 1;
-      }
-    }
-
-    setCurrentTurnProgress(progress);
-
-    if (timeline.serverComplete && progress >= 1) {
-      stopTurnProgressLoop({ preserveProgress: true });
-      return;
-    }
-
-    turnProgressRafRef.current = window.requestAnimationFrame(tickTurnProgress);
-  }
-
-  function startNarrationTimeline(slide: PresentationSlide | null) {
-    stopTurnProgressLoop();
-    turnTimelineRef.current = {
-      kind: 'narration',
-      startedAt: performance.now(),
-      estimatedTotalMs: estimateNarrationDurationMs(slide),
-      serverComplete: false,
-    };
-    setCurrentTurnProgress(0.02);
-    turnProgressRafRef.current = window.requestAnimationFrame(tickTurnProgress);
-  }
-
-  function markNarrationTimelineComplete() {
-    const timeline = turnTimelineRef.current;
-    if (!timeline || timeline.kind !== 'narration') {
-      return;
-    }
-
-    timeline.serverComplete = true;
-    timeline.estimatedTotalMs = Math.max(
-      timeline.estimatedTotalMs,
-      performance.now() - timeline.startedAt + (playerRef.current?.getBufferedMs() ?? 0),
-    );
-
-    if (turnProgressRafRef.current === null) {
-      turnProgressRafRef.current = window.requestAnimationFrame(tickTurnProgress);
-    }
-  }
-
   function resetTurnUi(label: string) {
     pendingTranscriptRef.current = '';
     handledQuestionTranscriptRef.current = '';
@@ -363,7 +325,6 @@ function App() {
     clearTranscriptQueue();
     clearAutoAdvance();
     clearQuestionCommandTimeout();
-    stopTurnProgressLoop();
   }
 
   function interruptCurrentTurn() {
@@ -371,7 +332,6 @@ function App() {
     clearTranscriptQueue();
     clearAutoAdvance();
     currentTurnKindRef.current = null;
-    stopTurnProgressLoop();
   }
 
   function parseNavigationCommand(transcript: string) {
@@ -515,9 +475,14 @@ function App() {
         },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
+        enableAffectiveDialog: true,
+        proactivity: {
+          proactiveAudio: true,
+        },
         realtimeInputConfig: {
           automaticActivityDetection: {
-            disabled: true,
+            prefixPaddingMs: 140,
+            silenceDurationMs: 520,
           },
         },
       },
@@ -608,7 +573,6 @@ function App() {
       clearTranscriptQueue();
       clearAutoAdvance();
       clearQuestionCommandTimeout();
-      stopTurnProgressLoop();
       sessionRef.current?.close();
       recorderRef.current?.dispose().catch(() => undefined);
       playerRef.current?.dispose().catch(() => undefined);
@@ -661,14 +625,18 @@ function App() {
     const scene = `Internal reference only. Title: "${slide.title}". Note: "${slide.note}". Approved spoken context: "${slide.script}".`;
     const openingFramework =
       slideIndex === 0
-        ? 'Open as if someone just asked you, "So what exactly is Beforest?" Answer directly and naturally, without saying hello, welcome, or giving a formal agenda. In the first few lines, make three things clear in everyday language: what Beforest is, why it matters, and where this conversation is going. Use contractions. Keep the sentences short. Sound warm, thoughtful, and lightly informal, like a smart person explaining something clearly on a call. Do not explain controls, clicking, microphones, or app behavior unless the listener asks. After that orientation, move naturally into the substance.'
+        ? 'Open as if someone just asked you, "So what exactly is Beforest?" Answer directly and naturally, without saying hello, welcome, or giving a formal agenda. In the first few lines, make three things clear in everyday language: what Beforest is, why it matters, and where this conversation is going. Use contractions. Keep the sentences short. Sound warm, thoughtful, and lightly informal, like a smart person explaining something clearly on a call. Speak a little slower than usual, with clean pauses between ideas, so the listener can settle into the pace. Do not explain controls, clicking, microphones, or app behavior unless the listener asks. After that orientation, move naturally into the substance.'
+        : '';
+    const interruptionNudge =
+      slide.kind !== 'cta' && (slideIndex === 0 || slideIndex % 3 === 2)
+        ? 'If it feels natural, add one brief line that they can interrupt you with the mic anytime and you will keep going unless they do.'
         : '';
     const close =
       slide.kind === 'cta'
         ? 'Close with conviction, invite them to take the trial stay at hospitality.beforest.co, and end with: You decide with your feet, not your eyes. See you in the slow lane.'
-        : 'Close naturally. If it fits, leave a brief opening for questions, but do not turn it into interface guidance.';
+        : 'Close naturally. Keep the story moving on its own. Do not wait for audience input.';
 
-    return `${position} ${scene} Speak for about 20 to 30 seconds. This is for internal guidance only: never say slide, scene, presentation, or "in this part". Never describe what is on the slide. Never say "this slide is about" or anything similar. Do not open with "hello", "welcome", "today I want to share", or other presentation language. Speak like a human guide on a thoughtful call, not a brochure or voice-over. ${openingFramework} ${close}`;
+    return `${position} ${scene} Speak for about 22 to 32 seconds. This is for internal guidance only: never say slide, scene, presentation, or "in this part". Never describe what is on the slide. Never say "this slide is about" or anything similar. Do not open with "hello", "welcome", "today I want to share", or other presentation language. Speak like a human guide on a thoughtful call, not a brochure or voice-over. Keep the pace calm and measured. Let each idea land before the next one. ${openingFramework} ${interruptionNudge} ${close}`;
   }
 
   function sendTextTurn(text: string, kind: TurnKind) {
@@ -678,10 +646,15 @@ function App() {
 
     currentTurnKindRef.current = kind;
     resetTurnUi(kind === 'narration' ? 'Beforest is speaking...' : 'Beforest is responding...');
-    if (kind === 'narration') {
-      startNarrationTimeline(slidesRef.current[currentSlideIndexRef.current] ?? null);
-    }
-    sessionRef.current.sendRealtimeInput({ text });
+    sessionRef.current.sendClientContent({
+      turns: [
+        {
+          role: 'user',
+          parts: [{ text }],
+        },
+      ],
+      turnComplete: true,
+    });
   }
 
   function narrateSlide(slideIndex: number) {
@@ -706,7 +679,10 @@ function App() {
 
   function scheduleNextSlideAfterPlayback() {
     const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
-    const delayMs = Math.max(1400, Math.round(bufferedMs + 550));
+    const current = slidesRef.current[currentSlideIndexRef.current];
+    const estimatedMs = estimateNarrationDurationMs(current);
+    const settleMs = current?.kind === 'quote' ? 700 : 1050;
+    const delayMs = Math.max(settleMs, Math.round(bufferedMs + Math.min(estimatedMs * 0.08, 1200)));
     scheduleNextSlide(delayMs);
   }
 
@@ -782,7 +758,6 @@ function App() {
     const turnKind = currentTurnKindRef.current;
     currentTurnKindRef.current = null;
     if (turnKind === 'narration') {
-      markNarrationTimelineComplete();
       if (currentSlideIndexRef.current < slidesRef.current.length - 1) {
         scheduleNextSlideAfterPlayback();
       }
@@ -836,24 +811,32 @@ function App() {
 
     const outputTranscript = serverContent?.outputTranscription?.text;
     if (outputTranscript) {
-      const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
-      const delayMs = Math.max(0, Math.round(bufferedMs - 180));
-      const timeoutId = window.setTimeout(() => {
-        setLatestOutputTranscript((previous) =>
-          mergeOutputTranscriptSnapshot(previous, outputTranscript),
-        );
-      }, delayMs);
-      transcriptTimeoutsRef.current.push(timeoutId);
+      queuedOutputTranscriptRef.current = mergeOutputTranscriptSnapshot(
+        queuedOutputTranscriptRef.current,
+        outputTranscript,
+      );
+
+      if (outputTranscriptTimeoutRef.current === null) {
+        const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+        const delayMs = Math.max(420, Math.min(1800, Math.round(bufferedMs * 0.72 + 360)));
+        outputTranscriptTimeoutRef.current = window.setTimeout(() => {
+          flushQueuedOutputTranscript();
+        }, delayMs);
+      }
     }
 
     if (serverContent?.interrupted) {
       playerRef.current?.reset();
       clearTranscriptQueue();
       clearAutoAdvance();
-      stopTurnProgressLoop();
+    }
+
+    if (serverContent?.generationComplete) {
+      flushQueuedOutputTranscript();
     }
 
     if (serverContent?.turnComplete) {
+      flushQueuedOutputTranscript();
       handleTurnComplete();
     }
   }
@@ -919,7 +902,6 @@ function App() {
       });
 
       recorderRef.current = recorder;
-      session.sendRealtimeInput({ activityStart: {} });
       await recorder.start();
       isRecordingRef.current = true;
       setIsRecording(true);
@@ -937,7 +919,7 @@ function App() {
     }
 
     await recorderRef.current?.stop();
-    sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
+    sessionRef.current?.sendRealtimeInput({ audioStreamEnd: true });
     isRecordingRef.current = false;
     setIsRecording(false);
     clearQuestionCommandTimeout();
@@ -1137,35 +1119,6 @@ function App() {
         </div>
 
         <div className="portrait-overlay">
-          {isActivated ? (
-            <div className="story-progress" aria-hidden="true">
-              {slides.map((slide, index) => (
-                <span
-                  key={slide.id}
-                  className={[
-                    'story-segment',
-                    index < currentSlideIndex ? 'done' : '',
-                    index === currentSlideIndex ? 'current' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                >
-                  <span
-                    className="story-fill"
-                    style={{
-                      transform:
-                        index < currentSlideIndex
-                          ? 'scaleX(1)'
-                          : index === currentSlideIndex
-                            ? `scaleX(${currentTurnProgress})`
-                            : 'scaleX(0)',
-                    }}
-                  />
-                </span>
-              ))}
-            </div>
-          ) : null}
-
           <div className={`topic-heading${isActivated ? '' : ' idle'}`} aria-live="polite">
             <p className="topic-eyebrow">{sceneEyebrow}</p>
             <h1 className="topic-title">{sceneHeading}</h1>
@@ -1237,12 +1190,6 @@ function App() {
             ) : null}
           </div>
 
-          {isActivated ? (
-            <div className="bottom-progress" aria-hidden="true">
-              <span style={{ width: `${overallProgressPercent}%` }} />
-            </div>
-          ) : null}
-
           {connectionState === 'error' || uiError ? (
             <div className="inline-error" role="alert">
               {uiError || connectionError}
@@ -1304,7 +1251,7 @@ function App() {
                   </div>
                   <div>
                     <strong>Questions</strong>
-                    <span>Hold the mic, speak, then release.</span>
+                    <span>Press and hold the mic to interrupt, ask, and let it continue.</span>
                   </div>
                   <div>
                     <strong>Voice</strong>

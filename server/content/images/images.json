@@ -1,0 +1,102 @@
+[
+  {
+    "id": "opening-forest-road",
+    "title": "The first exhale",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0209.jpg",
+    "hook": "30 nights a year where recovery becomes real.",
+    "note": "Use for the opener, exhaustion, and the need for protected time.",
+    "alt": "A quiet forest road framed by dense greenery and soft light.",
+    "tags": ["opening", "tension", "recovery", "protection", "forest", "quiet"],
+    "best_for": ["opening", "tension", "exhaustion", "why beforest"]
+  },
+  {
+    "id": "quote-erosion",
+    "title": "Quiet erosion",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_20.jpeg",
+    "hook": "You can get very good at a life that is quietly hurting you.",
+    "note": "Use for pause moments, emotional reframes, and the cost of waiting.",
+    "alt": "A moody natural scene with muted light and a reflective atmosphere.",
+    "tags": ["quote", "pause", "cost of waiting", "emotional", "reflection"],
+    "best_for": ["quote", "waiting", "reflection", "urgency"]
+  },
+  {
+    "id": "protected-time-canopy",
+    "title": "Protected time",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0814.jpg",
+    "hook": "You do not need escape. You need protected time.",
+    "note": "Use for the 10% reframe and the idea of repeated return.",
+    "alt": "A still canopy and wilderness scene with a calm, enveloping mood.",
+    "tags": ["reframe", "protected time", "return", "wilderness", "10 percent"],
+    "best_for": ["reframe", "ten percent", "return", "rhythm"]
+  },
+  {
+    "id": "proof-restoration",
+    "title": "Quiet proof",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PSX_20211216_190054.webp",
+    "hook": "Trust should be built on land, not language.",
+    "note": "Use for proof, stewardship, and long-horizon credibility.",
+    "alt": "A restored landscape image representing years of stewardship and care.",
+    "tags": ["proof", "trust", "restoration", "stewardship", "credibility"],
+    "best_for": ["proof", "numbers", "trust", "seven years"]
+  },
+  {
+    "id": "collective-landscape",
+    "title": "Belonging to a place",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_4.jpeg",
+    "hook": "Beforest is where recovery becomes real.",
+    "note": "Use for the collectives, belonging, and what the places feel like.",
+    "alt": "A lush Beforest landscape that feels lived-in, restored, and calm.",
+    "tags": ["collectives", "place", "belonging", "experience", "coorg", "hyderabad"],
+    "best_for": ["experience", "collectives", "belonging", "place"]
+  },
+  {
+    "id": "structure-clarity",
+    "title": "The shape of the membership",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_24.png",
+    "hook": "Access changes behaviour faster than ownership.",
+    "note": "Use for membership structure, person-nights, and rhythm versus accumulation.",
+    "alt": "A composed Beforest visual suited to explaining the membership structure.",
+    "tags": ["clarity", "structure", "membership", "person nights", "access"],
+    "best_for": ["clarity", "product", "membership", "pricing framing"]
+  },
+  {
+    "id": "rest-rhythm-quote",
+    "title": "Rest is a rhythm",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_39.png",
+    "hook": "Rest is not a reward. It is a rhythm worth protecting.",
+    "note": "Use for short declarative moments and transitions into action.",
+    "alt": "A refined Beforest image with warmth and editorial stillness.",
+    "tags": ["quote", "rest", "rhythm", "transition", "stillness"],
+    "best_for": ["quote", "transition", "rhythm"]
+  },
+  {
+    "id": "waiting-cost",
+    "title": "Another year unchanged",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_20.jpeg",
+    "hook": "The cost of waiting is another year unchanged.",
+    "note": "Use for urgency, lost margin, and the emotional cost of postponement.",
+    "alt": "An introspective landscape image for the urgency section.",
+    "tags": ["urgency", "waiting", "cost", "margin", "next year"],
+    "best_for": ["urgency", "waiting", "cost of delay"]
+  },
+  {
+    "id": "trial-stay",
+    "title": "The first real step",
+    "path": "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_39.png",
+    "hook": "Start with the smallest real step.",
+    "note": "Use for Blyton Bungalow, the pilot stay, and the final CTA.",
+    "alt": "A warm Beforest hospitality image suited to the trial-stay invitation.",
+    "tags": ["cta", "trial stay", "blyton bungalow", "pilot", "action"],
+    "best_for": ["cta", "trial", "action", "book stay"]
+  },
+  {
+    "id": "art-of-return-hero",
+    "title": "The art of return",
+    "path": "https://10percent.beforest.co/_next/image?url=%2Fhero-5.webp&w=1920&q=80",
+    "hook": "You decide with your feet, not your eyes.",
+    "note": "Use for broad brand framing, the 10% Life identity, and the close.",
+    "alt": "A wide Beforest hero landscape with expansive, reflective energy.",
+    "tags": ["hero", "identity", "closing", "return", "brand"],
+    "best_for": ["identity", "closing", "brand", "what is beforest"]
+  }
+]

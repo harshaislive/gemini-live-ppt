@@ -27,11 +27,6 @@ interface PresentationPayload {
   slides: PresentationSlide[];
 }
 
-interface TranscriptSegment {
-  id: number;
-  text: string;
-}
-
 interface QuestionRouteResponse {
   action: 'stay' | 'goto' | 'derived';
   targetSlideId: string | null;
@@ -64,60 +59,77 @@ function getOptimizedImageUrl(
   return url.toString();
 }
 
-function buildSubtitleWindow(transcriptSegments: TranscriptSegment[]) {
-  const recentTexts = transcriptSegments
-    .map((segment) => segment.text.trim())
-    .filter(Boolean)
-    .slice(-5);
+function countWords(text: string) {
+  return text.split(/\s+/).filter(Boolean).length;
+}
 
-  if (recentTexts.length === 0) {
-    return '';
+function mergeOutputTranscriptSnapshot(previousText: string, nextText: string) {
+  const previous = previousText.replace(/\s+/g, ' ').trim();
+  const next = nextText.replace(/\s+/g, ' ').trim();
+
+  if (!next) {
+    return previous;
   }
 
-  const normalized: string[] = [];
-
-  for (const text of recentTexts) {
-    const previous = normalized.at(-1);
-
-    if (!previous) {
-      normalized.push(text);
-      continue;
-    }
-
-    if (text === previous) {
-      continue;
-    }
-
-    if (text.startsWith(previous)) {
-      normalized[normalized.length - 1] = text;
-      continue;
-    }
-
-    if (previous.startsWith(text)) {
-      continue;
-    }
-
-    normalized.push(text);
+  if (!previous) {
+    return next;
   }
 
-  let cue = normalized.at(-1) ?? '';
-  let wordCount = cue.split(/\s+/).filter(Boolean).length;
-
-  for (let index = normalized.length - 2; index >= 0; index -= 1) {
-    if (wordCount >= 14 || cue.length >= 120) {
-      break;
-    }
-
-    const candidate = `${normalized[index]} ${cue}`.trim();
-    if (candidate.length > 150) {
-      break;
-    }
-
-    cue = candidate;
-    wordCount = cue.split(/\s+/).filter(Boolean).length;
+  if (next === previous || previous.startsWith(next)) {
+    return previous;
   }
 
-  return cue;
+  if (next.startsWith(previous)) {
+    return next;
+  }
+
+  return `${previous} ${next}`.replace(/\s+/g, ' ').trim();
+}
+
+function buildSubtitleCue(transcript: string) {
+  const text = transcript.replace(/\s+/g, ' ').trim();
+  const totalWords = countWords(text);
+
+  if (!text) {
+    return { text: '', totalWords: 0, mode: 'empty' as const };
+  }
+
+  const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  const lastPart = parts.at(-1) ?? '';
+  const hasCompletedEnding = /[.!?]["']?$/.test(text);
+  const tail = hasCompletedEnding ? '' : lastPart;
+  const complete = tail ? parts.slice(0, -1) : parts;
+
+  if (tail) {
+    const tailWords = countWords(tail);
+    if (tailWords >= 7) {
+      const tailWordsList = tail.split(/\s+/).filter(Boolean);
+      return {
+        text: tailWordsList.length > 16 ? tailWordsList.slice(-16).join(' ') : tail,
+        totalWords,
+        mode: 'tail' as const,
+      };
+    }
+  }
+
+  if (complete.length > 0) {
+    let cue = complete.at(-1) ?? '';
+    if (complete.length >= 2) {
+      const combined = `${complete.at(-2)} ${cue}`.trim();
+      if (combined.length <= 150 && countWords(combined) <= 20) {
+        cue = combined;
+      }
+    }
+
+    return { text: cue, totalWords, mode: 'sentence' as const };
+  }
+
+  const words = text.split(/\s+/).filter(Boolean);
+  return {
+    text: words.length > 14 ? words.slice(-14).join(' ') : text,
+    totalWords,
+    mode: 'tail' as const,
+  };
 }
 
 function buildTopicSequence(slide: PresentationSlide | null) {
@@ -177,8 +189,7 @@ function App() {
   const [presentationTitle, setPresentationTitle] = useState('The 10% Life');
   const [slides, setSlides] = useState<PresentationSlide[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
-  const [, setActiveTranscriptId] = useState<number | null>(null);
+  const [latestOutputTranscript, setLatestOutputTranscript] = useState('');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [selectedVoice, setSelectedVoice] = useState<(typeof VOICE_OPTIONS)[number]>('Zephyr');
   const [isIntroVisible, setIsIntroVisible] = useState(true);
@@ -197,7 +208,6 @@ function App() {
   const questionCommandTimeoutRef = useRef<number | null>(null);
   const pendingTranscriptRef = useRef('');
   const isRecordingRef = useRef(false);
-  const transcriptIdRef = useRef(0);
   const hasNarratedSlideRef = useRef<number | null>(null);
   const selectedVoiceRef = useRef<(typeof VOICE_OPTIONS)[number]>('Zephyr');
   const suppressNextCloseErrorRef = useRef(false);
@@ -209,6 +219,7 @@ function App() {
   const introTimeoutRef = useRef<number | null>(null);
   const subtitleTimeoutRef = useRef<number | null>(null);
   const lastSubtitleTextRef = useRef('');
+  const subtitleCommitWordCountRef = useRef(0);
   const topicTimeoutRef = useRef<number | null>(null);
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
@@ -308,6 +319,7 @@ function App() {
     setDisplaySubtitle('');
     setIsSubtitleVisible(false);
     lastSubtitleTextRef.current = '';
+    subtitleCommitWordCountRef.current = 0;
 
     if (!currentSlide) {
       return;
@@ -326,11 +338,18 @@ function App() {
   }, [currentSlide?.id]);
 
   useEffect(() => {
-    const latestTranscriptText = buildSubtitleWindow(transcriptSegments);
+    const latestNarrationCue = buildSubtitleCue(latestOutputTranscript);
     let nextSubtitle = '';
 
-    if (latestTranscriptText) {
-      nextSubtitle = latestTranscriptText;
+    if (latestNarrationCue.text) {
+      if (
+        latestNarrationCue.mode === 'tail' &&
+        displaySubtitle &&
+        latestNarrationCue.totalWords - subtitleCommitWordCountRef.current < 6
+      ) {
+        return;
+      }
+      nextSubtitle = latestNarrationCue.text;
     } else if (isRecording) {
       nextSubtitle = liveTranscript.trim() || 'Listening...';
     } else if (!isActivated) {
@@ -356,6 +375,7 @@ function App() {
     if (!nextSubtitle) {
       setDisplaySubtitle('');
       setIsSubtitleVisible(false);
+      subtitleCommitWordCountRef.current = 0;
       return;
     }
 
@@ -365,6 +385,9 @@ function App() {
         setDisplaySubtitle(nextSubtitle);
         if (shouldAnimateIn) {
           setIsSubtitleVisible(true);
+        }
+        if (latestNarrationCue.text) {
+          subtitleCommitWordCountRef.current = latestNarrationCue.totalWords;
         }
       },
       shouldAnimateIn ? 120 : 320,
@@ -376,7 +399,7 @@ function App() {
         subtitleTimeoutRef.current = null;
       }
     };
-  }, [displaySubtitle, isActivated, isRecording, liveTranscript, transcriptSegments]);
+  }, [displaySubtitle, isActivated, isRecording, latestOutputTranscript, liveTranscript]);
 
   useEffect(() => {
     if (topicTimeoutRef.current !== null) {
@@ -427,8 +450,7 @@ function App() {
     pendingTranscriptRef.current = '';
     handledQuestionTranscriptRef.current = '';
     setLiveTranscript(label);
-    setTranscriptSegments([]);
-    setActiveTranscriptId(null);
+    setLatestOutputTranscript('');
     playerRef.current?.reset();
     clearTranscriptQueue();
     clearAutoAdvance();
@@ -516,8 +538,7 @@ function App() {
     hasNarratedSlideRef.current = null;
     setCurrentSlideIndex(targetIndex);
     setLiveTranscript(`Moving to slide ${targetIndex + 1}.`);
-    setTranscriptSegments([]);
-    setActiveTranscriptId(null);
+    setLatestOutputTranscript('');
     handledQuestionTranscriptRef.current = pendingTranscriptRef.current;
   }
 
@@ -735,14 +756,14 @@ function App() {
     const scene = `Internal reference only. Title: "${slide.title}". Note: "${slide.note}". Approved spoken context: "${slide.script}".`;
     const openingFramework =
       slideIndex === 0
-        ? 'This is the opening of the experience. Speak like you are on a calm one-to-one call with someone intelligent who is hearing about this for the first time. In the first few lines, answer three plain questions in natural spoken language: what Beforest is, why it matters, and where this walkthrough is going. Use short, everyday sentences. Translate abstract ideas into concrete language people can picture easily. Do not sound poetic, lofty, mysterious, or overly polished. Do not explain controls, clicking, microphones, or app behavior unless the listener asks. After that orientation, move naturally into the substance.'
+        ? 'Open as if someone just asked you, "So what exactly is Beforest?" Answer directly and naturally, without saying hello, welcome, or giving a formal agenda. In the first few lines, make three things clear in everyday language: what Beforest is, why it matters, and where this conversation is going. Use contractions. Keep the sentences short. Sound warm, thoughtful, and lightly informal, like a smart person explaining something clearly on a call. Do not explain controls, clicking, microphones, or app behavior unless the listener asks. After that orientation, move naturally into the substance.'
         : '';
     const close =
       slide.kind === 'cta'
         ? 'Close with conviction, invite them to take the trial stay at hospitality.beforest.co, and end with: You decide with your feet, not your eyes. See you in the slow lane.'
         : 'Close naturally. If it fits, leave a brief opening for questions, but do not turn it into interface guidance.';
 
-    return `${position} ${scene} Speak for about 20 to 30 seconds. This is for internal guidance only: never say slide, scene, presentation, or "in this part". Never describe what is on the slide. Never say "this slide is about" or anything similar. Speak like a human guide on a thoughtful call, not a brochure or voice-over. ${openingFramework} ${close}`;
+    return `${position} ${scene} Speak for about 20 to 30 seconds. This is for internal guidance only: never say slide, scene, presentation, or "in this part". Never describe what is on the slide. Never say "this slide is about" or anything similar. Do not open with "hello", "welcome", "today I want to share", or other presentation language. Speak like a human guide on a thoughtful call, not a brochure or voice-over. ${openingFramework} ${close}`;
   }
 
   function sendTextTurn(text: string, kind: TurnKind) {
@@ -900,14 +921,11 @@ function App() {
 
     const outputTranscript = serverContent?.outputTranscription?.text;
     if (outputTranscript) {
-      const segmentId = transcriptIdRef.current + 1;
-      transcriptIdRef.current = segmentId;
       const delayMs = Math.max(0, (playerRef.current?.getBufferedMs() ?? 0) - 120);
       const timeoutId = window.setTimeout(() => {
-        setTranscriptSegments((previous) =>
-          [...previous, { id: segmentId, text: outputTranscript }].slice(-28),
+        setLatestOutputTranscript((previous) =>
+          mergeOutputTranscriptSnapshot(previous, outputTranscript),
         );
-        setActiveTranscriptId(segmentId);
       }, delayMs);
       transcriptTimeoutsRef.current.push(timeoutId);
     }

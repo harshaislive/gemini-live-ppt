@@ -187,15 +187,58 @@ app.get('/api/live-token', authRequired, async (_req, res) => {
       },
     });
 
+    console.log(
+      `[live-token] ${JSON.stringify({
+        at: new Date().toISOString(),
+        model,
+        voiceName: requestedVoice,
+      })}`,
+    );
+
     res.json({
       token: token.name,
       model,
       voiceName: requestedVoice,
+      systemInstruction: buildPresentationSystemInstruction(),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to create live token.';
     res.status(500).json({ error: message });
   }
+});
+
+app.post('/api/live-events', authRequired, (req, res) => {
+  const body = req.body as {
+    at?: string;
+    traceSessionId?: string;
+    type?: string;
+    slideId?: string | null;
+    turnState?: string;
+    detail?: string;
+  };
+
+  if (
+    typeof body?.at !== 'string' ||
+    typeof body?.traceSessionId !== 'string' ||
+    typeof body?.type !== 'string' ||
+    typeof body?.turnState !== 'string' ||
+    typeof body?.detail !== 'string'
+  ) {
+    return res.status(400).json({ error: 'Invalid live event payload.' });
+  }
+
+  console.log(
+    `[live-event] ${JSON.stringify({
+      at: body.at,
+      traceSessionId: body.traceSessionId,
+      type: body.type,
+      slideId: body.slideId ?? null,
+      turnState: body.turnState,
+      detail: body.detail,
+    })}`,
+  );
+
+  return res.json({ ok: true });
 });
 
 app.get('/api/presentation', authRequired, (_req, res) => {

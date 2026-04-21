@@ -30,6 +30,8 @@ type LiveSessionEventType =
   | 'playback_unlock_failed'
   | 'narration_requested'
   | 'question_requested'
+  | 'client_turn_sent'
+  | 'client_turn_failed'
   | 'first_output_transcript'
   | 'first_audio_chunk'
   | 'first_audio_timeout'
@@ -70,6 +72,7 @@ interface QuestionRouteResponse {
 interface LiveSessionEvent {
   id: number;
   at: string;
+  traceSessionId: string;
   type: LiveSessionEventType;
   slideId: string | null;
   turnState: LiveTurnState;
@@ -226,8 +229,6 @@ function App() {
   const [presentationTitle, setPresentationTitle] = useState('The 10% Life');
   const [slides, setSlides] = useState<PresentationSlide[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const [liveTurnState, setLiveTurnState] = useState<LiveTurnState>('idle');
-  const [liveEvents, setLiveEvents] = useState<LiveSessionEvent[]>([]);
   const [latestOutputTranscript, setLatestOutputTranscript] = useState('');
   const [liveTranscript, setLiveTranscript] = useState('');
   const [selectedVoice, setSelectedVoice] = useState<(typeof VOICE_OPTIONS)[number]>('Zephyr');
@@ -236,7 +237,6 @@ function App() {
   const [uiError, setUiError] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
   const playerRef = useRef<AudioPlayerHandle | null>(null);
@@ -259,6 +259,7 @@ function App() {
   const captionTimeoutRef = useRef<number | null>(null);
   const liveTurnStateRef = useRef<LiveTurnState>('idle');
   const liveEventIdRef = useRef(0);
+  const traceSessionIdRef = useRef(window.crypto.randomUUID());
   const startupAudioTimeoutRef = useRef<number | null>(null);
   const activeNarrationTurnIdRef = useRef(0);
   const firstAudioChunkReceivedRef = useRef(false);
@@ -267,14 +268,6 @@ function App() {
   const narrationRetryCountRef = useRef(0);
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
-  const isDebugMode = useMemo(() => {
-    const params = new URLSearchParams(window.location.search);
-    return (
-      params.has('debug') ||
-      window.location.hostname === 'localhost' ||
-      window.location.hostname === '127.0.0.1'
-    );
-  }, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
   const slideVisuals = useMemo(
     () =>
@@ -327,20 +320,25 @@ function App() {
 
   function setLiveTurnStateValue(nextState: LiveTurnState) {
     liveTurnStateRef.current = nextState;
-    setLiveTurnState(nextState);
   }
 
   function logLiveEvent(type: LiveSessionEventType, detail: string) {
     const nextEvent: LiveSessionEvent = {
       id: liveEventIdRef.current += 1,
       at: new Date().toISOString(),
+      traceSessionId: traceSessionIdRef.current,
       type,
       slideId: slidesRef.current[currentSlideIndexRef.current]?.id ?? null,
       turnState: liveTurnStateRef.current,
       detail,
     };
 
-    setLiveEvents((previous) => [...previous.slice(-39), nextEvent]);
+    void fetch('/api/live-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(nextEvent),
+      keepalive: true,
+    }).catch(() => undefined);
   }
 
   function clearStartupAudioTimeout() {
@@ -685,10 +683,11 @@ function App() {
       throw new Error('Live token request failed.');
     }
 
-    const { token, model } = (await tokenResponse.json()) as {
+    const { token, model, voiceName: configuredVoiceName, systemInstruction } = (await tokenResponse.json()) as {
       token: string;
       model: string;
       voiceName: string;
+      systemInstruction: string;
     };
 
     const ai = new GoogleGenAI({
@@ -696,14 +695,23 @@ function App() {
       httpOptions: { apiVersion: 'v1alpha' },
     });
 
+    let hasResolvedSetup = false;
+    let resolveSetupComplete: (() => void) | null = null;
+    let rejectSetupComplete: ((reason?: unknown) => void) | null = null;
+    const setupCompletePromise = new Promise<void>((resolve, reject) => {
+      resolveSetupComplete = resolve;
+      rejectSetupComplete = reject;
+    });
+
     const session = await ai.live.connect({
       model,
       config: {
         responseModalities: [Modality.AUDIO],
+        systemInstruction,
         speechConfig: {
           voiceConfig: {
             prebuiltVoiceConfig: {
-              voiceName,
+              voiceName: configuredVoiceName,
             },
           },
         },
@@ -719,12 +727,19 @@ function App() {
         onopen: () => {
           setConnectionState('connecting');
           setIsSwitchingVoice(false);
-          logLiveEvent('session_opened', `WebSocket opened with ${voiceName}; waiting for setupComplete.`);
+          logLiveEvent('session_opened', `WebSocket opened with ${configuredVoiceName}; waiting for setupComplete.`);
         },
         onmessage: (message: LiveServerMessage) => {
+          if (message.setupComplete && !hasResolvedSetup) {
+            hasResolvedSetup = true;
+            resolveSetupComplete?.();
+          }
           handleMessage(message);
         },
         onerror: (event: ErrorEvent) => {
+          if (!hasResolvedSetup) {
+            rejectSetupComplete?.(new Error(event.message || 'Live session setup failed.'));
+          }
           setConnectionState('error');
           setIsSwitchingVoice(false);
           setConnectionError(event.message);
@@ -736,6 +751,15 @@ function App() {
           if (suppressNextCloseErrorRef.current) {
             suppressNextCloseErrorRef.current = false;
             return;
+          }
+          if (!hasResolvedSetup) {
+            rejectSetupComplete?.(
+              new Error(
+                event.reason
+                  ? `Live session closed before setup: ${event.reason}`
+                  : `Live session closed before setup (${event.code}).`,
+              ),
+            );
           }
           setConnectionState('error');
           setIsSwitchingVoice(false);
@@ -755,6 +779,7 @@ function App() {
     });
 
     sessionRef.current = session;
+    await setupCompletePromise;
 
     if (options?.loadPresentation) {
       const presentationResponse = await fetch('/api/presentation');
@@ -900,15 +925,29 @@ function App() {
         text.length > 120 ? `${text.slice(0, 117)}...` : text,
       );
     }
-    sessionRef.current.sendClientContent({
-      turns: [
-        {
-          role: 'user',
-          parts: [{ text }],
-        },
-      ],
-      turnComplete: true,
-    });
+    try {
+      sessionRef.current.sendClientContent({
+        turns: [
+          {
+            role: 'user',
+            parts: [{ text }],
+          },
+        ],
+        turnComplete: true,
+      });
+      logLiveEvent(
+        'client_turn_sent',
+        kind === 'narration' ? 'Narration turn sent to Gemini Live.' : 'Question turn sent to Gemini Live.',
+      );
+    } catch (error) {
+      logLiveEvent(
+        'client_turn_failed',
+        error instanceof Error ? error.message : 'sendClientContent failed.',
+      );
+      setUiError(error instanceof Error ? error.message : 'Unable to send the live turn.');
+      setLiveTurnStateValue('error');
+      currentTurnKindRef.current = null;
+    }
   }
 
   function narrateSlide(slideIndex: number) {
@@ -1618,57 +1657,6 @@ function App() {
             >
               <Question size={16} weight="bold" />
             </button>
-          ) : null}
-
-          {isDebugMode ? (
-            <>
-              <button
-                type="button"
-                className="debug-toggle"
-                aria-label={isDebugPanelOpen ? 'Hide live debug panel' : 'Show live debug panel'}
-                onClick={() => setIsDebugPanelOpen((previous) => !previous)}
-              >
-                Debug
-              </button>
-              {isDebugPanelOpen ? (
-                <aside className="debug-panel" aria-label="Live debug panel">
-                  <div className="debug-panel-header">
-                    <div>
-                      <p className="debug-panel-kicker">Live Trace</p>
-                      <strong>{liveTurnState}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="debug-panel-close"
-                      aria-label="Close live debug panel"
-                      onClick={() => setIsDebugPanelOpen(false)}
-                    >
-                      <X size={14} weight="bold" />
-                    </button>
-                  </div>
-                  <div className="debug-panel-meta">
-                    <span>{connectionState}</span>
-                    <span>{currentSlide ? `Slide ${currentSlideIndex + 1}` : 'No slide'}</span>
-                    <span>{currentTurnKindRef.current ?? 'no turn'}</span>
-                  </div>
-                  <div className="debug-event-list">
-                    {liveEvents.length ? (
-                      [...liveEvents].reverse().map((event) => (
-                        <article key={event.id} className="debug-event-item">
-                          <div className="debug-event-meta">
-                            <span>{event.at.slice(11, 19)}</span>
-                            <span>{event.type}</span>
-                          </div>
-                          <p>{event.detail}</p>
-                        </article>
-                      ))
-                    ) : (
-                      <p className="debug-event-empty">No live events yet.</p>
-                    )}
-                  </div>
-                </aside>
-              ) : null}
-            </>
           ) : null}
 
           {isHelpOpen ? (

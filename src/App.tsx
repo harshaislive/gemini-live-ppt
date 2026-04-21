@@ -132,8 +132,8 @@ function buildLiveCaption(transcript: string) {
       return '';
     }
 
-    return trailingWords.length > 16
-      ? trailingWords.slice(trailingWords.length - 16).join(' ')
+    return trailingWords.length > 12
+      ? trailingWords.slice(trailingWords.length - 12).join(' ')
       : trailingSentence;
   }
 
@@ -142,7 +142,7 @@ function buildLiveCaption(transcript: string) {
     return '';
   }
 
-  return words.length > 16 ? words.slice(words.length - 16).join(' ') : text;
+  return words.length > 12 ? words.slice(words.length - 12).join(' ') : text;
 }
 
 function isSystemCaptionLabel(text: string) {
@@ -232,10 +232,13 @@ function App() {
   }, [isActivated]);
 
   useEffect(() => {
-    let nextSubtitle = '';
+    let nextSubtitle = displaySubtitle;
 
     if (latestOutputTranscript.trim()) {
-      nextSubtitle = buildLiveCaption(latestOutputTranscript);
+      const liveCaption = buildLiveCaption(latestOutputTranscript);
+      if (liveCaption) {
+        nextSubtitle = liveCaption;
+      }
     } else if (isRecording) {
       nextSubtitle = liveTranscript.trim() || 'Listening...';
     } else if (!isActivated) {
@@ -262,7 +265,7 @@ function App() {
         captionTimeoutRef.current = null;
       }
     };
-  }, [isActivated, isRecording, latestOutputTranscript, liveTranscript]);
+  }, [displaySubtitle, isActivated, isRecording, latestOutputTranscript, liveTranscript]);
 
   function clearTranscriptQueue() {
     if (outputTranscriptTimeoutRef.current !== null) {
@@ -739,9 +742,20 @@ function App() {
     waitForDrain();
   }
 
+  function continueAfterQuestion(delayMs = 1400) {
+    clearAutoAdvance();
+    if (currentSlideIndexRef.current >= slidesRef.current.length - 1) {
+      return;
+    }
+
+    autoAdvanceTimeoutRef.current = window.setTimeout(() => {
+      setCurrentSlideIndex((previous) => previous + 1);
+    }, delayMs);
+  }
+
   async function applyQuestionRouting(question: string) {
     if (!question.trim()) {
-      scheduleNextSlide(1600);
+      continueAfterQuestion(1600);
       return;
     }
 
@@ -796,15 +810,18 @@ function App() {
       }
 
       if (route.action === 'stay') {
-        setLiveTranscript('Question answered. Staying on this slide.');
+        setLiveTranscript('Question answered. Continuing.');
+        continueAfterQuestion();
         return;
       }
     } catch {
-      setLiveTranscript('Question answered. Staying on this slide.');
+      setLiveTranscript('Question answered. Continuing.');
+      continueAfterQuestion();
       return;
     }
 
-    setLiveTranscript('Question answered. Staying on this slide.');
+    setLiveTranscript('Question answered. Continuing.');
+    continueAfterQuestion();
   }
 
   function handleTurnComplete() {
@@ -827,7 +844,8 @@ function App() {
         return;
       }
       if (!shouldRouteQuestion(question)) {
-        setLiveTranscript('Question answered. Staying on this slide.');
+        setLiveTranscript('Question answered. Continuing.');
+        continueAfterQuestion();
         return;
       }
       void applyQuestionRouting(question);
@@ -912,18 +930,6 @@ function App() {
     await unlockAudioPlayback();
     setIsActivated(true);
     hasNarratedSlideRef.current = null;
-  }
-
-  async function prepareMicrophonePermission() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
-
-    stream.getTracks().forEach((track) => track.stop());
   }
 
   async function startRecording() {
@@ -1130,11 +1136,10 @@ function App() {
     setUiError('');
 
     try {
-      await prepareMicrophonePermission();
       await activatePresentation();
     } catch (error) {
       setUiError(
-        error instanceof Error ? error.message : 'Microphone permission is required to begin.',
+        error instanceof Error ? error.message : 'Unable to begin the presentation.',
       );
     } finally {
       setIsStarting(false);

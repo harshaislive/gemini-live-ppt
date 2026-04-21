@@ -297,7 +297,7 @@ select:focus-visible {
 
 .portrait-player {
   position: relative;
-  width: min(100vw, calc(100dvh * 9 / 16));
+  width: 100vw;
   height: 100dvh;
   overflow: hidden;
   background: #140f0b;
@@ -310,8 +310,7 @@ select:focus-visible {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(180deg, rgba(10, 8, 6, 0.42) 0%, transparent 15%, transparent 48%, rgba(10, 8, 6, 0.62) 74%, rgba(10, 8, 6, 0.9) 100%),
-    linear-gradient(90deg, rgba(10, 8, 6, 0.24), transparent 18%, transparent 82%, rgba(10, 8, 6, 0.24));
+    linear-gradient(180deg, rgba(10, 8, 6, 0.38) 0%, transparent 15%, transparent 48%, rgba(10, 8, 6, 0.62) 74%, rgba(10, 8, 6, 0.9) 100%);
   z-index: 3;
   pointer-events: none;
 }
@@ -766,20 +765,12 @@ select:focus-visible {
   pointer-events: none;
 }
 
-.screen-frame::before {
-  content: '';
-  position: absolute;
-  inset: 12px;
-  border: 1px solid rgba(243, 236, 222, 0.08);
-}
-
 .screen-frame::after {
   content: '';
   position: absolute;
   inset: 0;
   box-shadow:
-    inset 0 0 0 1px rgba(243, 236, 222, 0.04),
-    inset 0 24px 50px rgba(0, 0, 0, 0.1),
+    inset 0 24px 50px rgba(0, 0, 0, 0.08),
     inset 0 -100px 160px rgba(0, 0, 0, 0.18);
 }
 
@@ -842,11 +833,6 @@ select:focus-visible {
     display: none;
   }
 
-  .portrait-player {
-    width: 100vw;
-    height: 100dvh;
-  }
-
   .portrait-overlay {
     padding: 16px 14px 20px;
   }
@@ -885,9 +871,6 @@ select:focus-visible {
     bottom: 38px;
   }
 
-  .screen-frame::before {
-    inset: 10px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

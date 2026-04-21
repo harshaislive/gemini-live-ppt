@@ -31,7 +31,7 @@ export const presentationSlides: PresentationSlide[] = [
     script:
       'You can get very good at a life that is quietly hurting you.',
     imageUrl:
-      'https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0209.jpg',
+      'https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_20.jpeg',
     kind: 'quote',
   },
   {
@@ -64,7 +64,7 @@ export const presentationSlides: PresentationSlide[] = [
     script:
       'Rest is not a reward. It is a rhythm worth protecting.',
     imageUrl:
-      'https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PSX_20211216_190054.webp',
+      'https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_39.png',
     kind: 'quote',
   },
   {
@@ -97,7 +97,7 @@ export const presentationSlides: PresentationSlide[] = [
     script:
       'You decide with your feet, not your eyes.',
     imageUrl:
-      'https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_24.png',
+      'https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0814.jpg',
     kind: 'quote',
   },
   {

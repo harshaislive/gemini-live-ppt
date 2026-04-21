@@ -127,21 +127,10 @@ function buildLiveCaption(transcript: string) {
   }
 
   if (trailingSentence) {
-    const trailingWords = trailingSentence.split(/\s+/).filter(Boolean);
-    if (trailingWords.length < 8) {
-      return '';
-    }
-    if (trailingWords.length > 18) {
-      return trailingWords.slice(0, 18).join(' ');
-    }
-    return trailingSentence;
-  }
-
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length < 8) {
     return '';
   }
-  return words.length > 18 ? words.slice(0, 18).join(' ') : text;
+
+  return '';
 }
 
 function estimateNarrationDurationMs(slide: PresentationSlide | null) {
@@ -194,8 +183,10 @@ function App() {
   const outputTranscriptTimeoutRef = useRef<number | null>(null);
   const autoAdvanceTimeoutRef = useRef<number | null>(null);
   const questionCommandTimeoutRef = useRef<number | null>(null);
+  const turnCompletionFallbackTimeoutRef = useRef<number | null>(null);
   const pendingTranscriptRef = useRef('');
   const queuedOutputTranscriptRef = useRef('');
+  const outputTranscriptIsFinalRef = useRef(false);
   const isRecordingRef = useRef(false);
   const hasNarratedSlideRef = useRef<number | null>(null);
   const selectedVoiceRef = useRef<(typeof VOICE_OPTIONS)[number]>('Zephyr');
@@ -283,6 +274,7 @@ function App() {
       outputTranscriptTimeoutRef.current = null;
     }
     queuedOutputTranscriptRef.current = '';
+    outputTranscriptIsFinalRef.current = false;
   }
 
   function flushQueuedOutputTranscript() {
@@ -316,21 +308,75 @@ function App() {
     }
   }
 
+  function clearTurnCompletionFallback() {
+    if (turnCompletionFallbackTimeoutRef.current !== null) {
+      window.clearTimeout(turnCompletionFallbackTimeoutRef.current);
+      turnCompletionFallbackTimeoutRef.current = null;
+    }
+  }
+
+  function getTranscriptFlushDelayMs(options?: { final?: boolean }) {
+    const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+
+    if (options?.final) {
+      return Math.max(520, Math.min(2200, Math.round(bufferedMs * 0.74 + 260)));
+    }
+
+    return Math.max(900, Math.min(2800, Math.round(bufferedMs * 0.92 + 420)));
+  }
+
+  function scheduleOutputTranscriptFlush(options?: { final?: boolean }) {
+    if (!queuedOutputTranscriptRef.current.trim()) {
+      return;
+    }
+
+    if (outputTranscriptTimeoutRef.current !== null) {
+      window.clearTimeout(outputTranscriptTimeoutRef.current);
+      outputTranscriptTimeoutRef.current = null;
+    }
+
+    const delayMs = getTranscriptFlushDelayMs(options);
+    outputTranscriptTimeoutRef.current = window.setTimeout(() => {
+      flushQueuedOutputTranscript();
+    }, delayMs);
+  }
+
+  function scheduleNarrationCompletionFallback() {
+    if (currentTurnKindRef.current !== 'narration') {
+      return;
+    }
+
+    clearTurnCompletionFallback();
+    const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
+    const current = slidesRef.current[currentSlideIndexRef.current];
+    const settleMs = current?.kind === 'quote' ? 1100 : 1500;
+    const delayMs = Math.max(settleMs, Math.round(bufferedMs + settleMs));
+
+    turnCompletionFallbackTimeoutRef.current = window.setTimeout(() => {
+      if (currentTurnKindRef.current === 'narration') {
+        handleTurnComplete();
+      }
+    }, delayMs);
+  }
+
   function resetTurnUi(label: string) {
     pendingTranscriptRef.current = '';
     handledQuestionTranscriptRef.current = '';
+    outputTranscriptIsFinalRef.current = false;
     setLiveTranscript(label);
     setLatestOutputTranscript('');
     playerRef.current?.reset();
     clearTranscriptQueue();
     clearAutoAdvance();
     clearQuestionCommandTimeout();
+    clearTurnCompletionFallback();
   }
 
   function interruptCurrentTurn() {
     playerRef.current?.reset();
     clearTranscriptQueue();
     clearAutoAdvance();
+    clearTurnCompletionFallback();
     currentTurnKindRef.current = null;
   }
 
@@ -757,6 +803,7 @@ function App() {
   function handleTurnComplete() {
     const turnKind = currentTurnKindRef.current;
     currentTurnKindRef.current = null;
+    clearTurnCompletionFallback();
     if (turnKind === 'narration') {
       if (currentSlideIndexRef.current < slidesRef.current.length - 1) {
         scheduleNextSlideAfterPlayback();
@@ -815,28 +862,25 @@ function App() {
         queuedOutputTranscriptRef.current,
         outputTranscript,
       );
-
-      if (outputTranscriptTimeoutRef.current === null) {
-        const bufferedMs = playerRef.current?.getBufferedMs() ?? 0;
-        const delayMs = Math.max(420, Math.min(1800, Math.round(bufferedMs * 0.72 + 360)));
-        outputTranscriptTimeoutRef.current = window.setTimeout(() => {
-          flushQueuedOutputTranscript();
-        }, delayMs);
-      }
+      scheduleOutputTranscriptFlush({ final: outputTranscriptIsFinalRef.current });
     }
 
     if (serverContent?.interrupted) {
       playerRef.current?.reset();
       clearTranscriptQueue();
       clearAutoAdvance();
+      clearTurnCompletionFallback();
     }
 
     if (serverContent?.generationComplete) {
-      flushQueuedOutputTranscript();
+      outputTranscriptIsFinalRef.current = true;
+      scheduleOutputTranscriptFlush({ final: true });
+      scheduleNarrationCompletionFallback();
     }
 
     if (serverContent?.turnComplete) {
-      flushQueuedOutputTranscript();
+      outputTranscriptIsFinalRef.current = true;
+      scheduleOutputTranscriptFlush({ final: true });
       handleTurnComplete();
     }
   }

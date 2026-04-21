@@ -285,8 +285,6 @@ select {
   position: absolute;
   inset: 0;
   z-index: 5;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
   padding: 14px 14px 20px;
 }
 
@@ -307,9 +305,9 @@ select {
 .story-fill {
   position: absolute;
   inset: 0;
-  transform: scaleX(0);
   transform-origin: left center;
   background: linear-gradient(90deg, rgba(253, 251, 247, 0.95), rgba(253, 251, 247, 0.72));
+  transition: transform 100ms linear;
 }
 
 .story-segment.done .story-fill {
@@ -320,13 +318,10 @@ select {
   transform: scaleX(0.22);
 }
 
-.story-segment.active .story-fill {
-  animation: storyPulse 3.8s ease-in-out infinite;
-}
-
 .intro-card {
-  align-self: start;
-  margin-top: 18px;
+  position: absolute;
+  top: 34px;
+  left: 14px;
   max-width: 72%;
   opacity: 1;
   transform: translateY(0);
@@ -361,26 +356,27 @@ select {
 
 .voice-corner {
   position: absolute;
-  top: 14px;
+  top: 28px;
   right: 14px;
   z-index: 7;
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 10px;
+  padding: 6px 9px;
   border: 1px solid rgba(253, 251, 247, 0.12);
   border-radius: 999px;
-  background: rgba(12, 11, 10, 0.2);
-  backdrop-filter: blur(16px);
+  background: rgba(12, 11, 10, 0.16);
+  backdrop-filter: blur(14px);
 }
 
 .voice-corner select {
   border: 0;
   background: transparent;
   color: var(--paper-soft);
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   outline: none;
   appearance: none;
+  max-width: 86px;
 }
 
 .status-dot {
@@ -406,7 +402,11 @@ select {
 }
 
 .mic-stage {
-  place-self: center;
+  position: absolute;
+  top: 58%;
+  left: 50%;
+  z-index: 7;
+  transform: translate(-50%, -50%);
 }
 
 .center-mic {
@@ -438,28 +438,34 @@ select {
 }
 
 .subtitle-rail {
-  align-self: end;
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(42% + 12px);
+  z-index: 7;
   display: grid;
-  gap: 14px;
+  justify-items: center;
+  gap: 12px;
 }
 
 .subtitle-line {
   margin: 0 auto;
-  width: min(100%, 320px);
-  min-height: 2.9em;
+  width: min(100%, 338px);
+  min-height: 3.3em;
   text-align: center;
-  font-size: clamp(1.06rem, 3.8vw, 1.26rem);
-  line-height: 1.38;
-  color: var(--paper);
+  font-size: clamp(0.96rem, 3.35vw, 1.08rem);
+  line-height: 1.5;
+  color: var(--paper-soft);
+  font-weight: 400;
   text-wrap: balance;
   text-shadow:
     0 2px 16px rgba(0, 0, 0, 0.42),
     0 0 28px rgba(0, 0, 0, 0.28);
   opacity: 0;
-  transform: translateY(14px);
+  transform: translateY(8px);
   transition:
-    opacity 420ms ease,
-    transform 420ms ease;
+    opacity 240ms ease,
+    transform 240ms ease;
 }
 
 .subtitle-line.visible {
@@ -485,7 +491,10 @@ select {
 }
 
 .bottom-progress {
-  position: relative;
+  position: absolute;
+  right: 14px;
+  bottom: 20px;
+  left: 14px;
   height: 1px;
   background: rgba(253, 251, 247, 0.16);
   overflow: hidden;
@@ -513,17 +522,38 @@ select {
   z-index: 8;
 }
 
-.begin-hint {
+.begin-control {
   position: absolute;
   left: 50%;
-  bottom: 62px;
-  margin: 0;
+  bottom: 56px;
   transform: translateX(-50%);
-  color: var(--paper-faint);
-  font-size: 0.74rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   z-index: 7;
+}
+
+.begin-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 18px;
+  border: 1px solid rgba(255, 192, 131, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 192, 131, 0.16);
+  color: var(--paper);
+  backdrop-filter: blur(16px);
+  transition:
+    transform 180ms ease,
+    background-color 180ms ease,
+    opacity 180ms ease;
+}
+
+.begin-button:disabled {
+  opacity: 0.42;
+}
+
+.begin-button:not(:disabled):hover {
+  transform: translateY(-1px);
 }
 
 .screen-frame {
@@ -556,15 +586,6 @@ select {
   }
 }
 
-@keyframes storyPulse {
-  0% {
-    transform: scaleX(0.18);
-  }
-  100% {
-    transform: scaleX(0.82);
-  }
-}
-
 @keyframes driftGlow {
   0%,
   100% {
@@ -588,8 +609,16 @@ select {
   }
 
   .voice-corner {
-    top: 12px;
+    top: 26px;
     right: 12px;
+  }
+
+  .subtitle-rail {
+    bottom: calc(42% + 8px);
+  }
+
+  .begin-control {
+    bottom: 52px;
   }
 
   .screen-frame {

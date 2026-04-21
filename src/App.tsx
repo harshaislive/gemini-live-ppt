@@ -85,6 +85,8 @@ function App() {
   const [isIntroVisible, setIsIntroVisible] = useState(true);
   const [displaySubtitle, setDisplaySubtitle] = useState('');
   const [isSubtitleVisible, setIsSubtitleVisible] = useState(false);
+  const [uiError, setUiError] = useState('');
+  const [isStarting, setIsStarting] = useState(false);
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
@@ -109,8 +111,33 @@ function App() {
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
+  const storyImages = useMemo(
+    () =>
+      [
+        ...new Set(
+          slides
+            .map((slide) =>
+              getOptimizedImageUrl(slide.imageUrl, {
+                width: isMobile ? 900 : 1080,
+                height: isMobile ? 1600 : 1920,
+                quality: isMobile ? 64 : 70,
+              }),
+            )
+            .filter(Boolean),
+        ),
+      ],
+    [isMobile, slides],
+  );
   const overallProgressPercent = slides.length
     ? ((currentSlideIndex + (isActivated ? 1 : 0)) / slides.length) * 100
+    : 0;
+  const STORY_DURATION_MS = 5600;
+  const [storyElapsedMs, setStoryElapsedMs] = useState(0);
+  const activeStoryIndex = storyImages.length
+    ? Math.floor(storyElapsedMs / STORY_DURATION_MS) % storyImages.length
+    : 0;
+  const activeStoryProgressPercent = storyImages.length
+    ? ((storyElapsedMs % STORY_DURATION_MS) / STORY_DURATION_MS) * 100
     : 0;
 
   useEffect(() => {
@@ -147,6 +174,27 @@ function App() {
   }, [isActivated]);
 
   useEffect(() => {
+    if (!isActivated || storyImages.length === 0) {
+      setStoryElapsedMs(0);
+      return;
+    }
+
+    const startedAt = performance.now();
+    let rafId = 0;
+
+    const tick = (now: number) => {
+      setStoryElapsedMs(now - startedAt);
+      rafId = window.requestAnimationFrame(tick);
+    };
+
+    rafId = window.requestAnimationFrame(tick);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [isActivated, storyImages.length]);
+
+  useEffect(() => {
     if (introTimeoutRef.current !== null) {
       window.clearTimeout(introTimeoutRef.current);
       introTimeoutRef.current = null;
@@ -174,7 +222,12 @@ function App() {
   }, [currentSlide?.id]);
 
   useEffect(() => {
-    const latestTranscriptText = transcriptSegments[transcriptSegments.length - 1]?.text?.trim() ?? '';
+    const latestTranscriptText = transcriptSegments
+      .slice(-4)
+      .map((segment) => segment.text.trim())
+      .filter(Boolean)
+      .join(' ')
+      .trim();
     let nextSubtitle = '';
 
     if (latestTranscriptText) {
@@ -546,12 +599,18 @@ function App() {
   function buildNarrationPrompt(slide: PresentationSlide, slideIndex: number, totalSlides: number) {
     const position = `You are guiding slide ${slideIndex + 1} of ${totalSlides}.`;
     const scene = `Current slide title: "${slide.title}". Slide note: "${slide.note}". Approved spoken context: "${slide.script}".`;
+    const openingFramework =
+      slideIndex === 0
+        ? 'This is the opening of the experience. Start with orientation before emotion. In a clear human way, explain: what Beforest is, why this presentation matters, where this story is going, and how the listener can interact. Sound like one thoughtful person speaking directly to another. Be concrete, grounded, and easy to follow. Keep abstract language low. After that orientation, move naturally into the first slide.'
+        : '';
     const close =
       slide.kind === 'cta'
         ? 'Close with conviction, invite them to take the trial stay at hospitality.beforest.co, and end with: You decide with your feet, not your eyes. See you in the slow lane.'
-        : 'Toward the end, ask if they have any questions. Tell them naturally that on desktop they can hold space to ask and release to send, and on mobile they can hold the mic and release. Mention that otherwise you will keep moving.';
+        : slideIndex === 0
+          ? 'Toward the end, mention naturally that once the presentation begins it will keep moving on its own. Tell them that on desktop they can hold space to ask and release to send, and on mobile they can hold the mic and release.'
+          : 'Toward the end, ask if they have any questions. Tell them naturally that on desktop they can hold space to ask and release to send, and on mobile they can hold the mic and release. Mention that otherwise you will keep moving.';
 
-    return `${position} ${scene} Narrate this scene now in about 20 to 30 seconds. Speak like a human guide, not a brochure. ${close}`;
+    return `${position} ${scene} Narrate this scene now in about 20 to 30 seconds. Speak like a human guide, not a brochure. ${openingFramework} ${close}`;
   }
 
   function sendTextTurn(text: string, kind: TurnKind) {
@@ -754,6 +813,18 @@ function App() {
     hasNarratedSlideRef.current = null;
   }
 
+  async function prepareMicrophonePermission() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        channelCount: 1,
+        echoCancellation: true,
+        noiseSuppression: true,
+      },
+    });
+
+    stream.getTracks().forEach((track) => track.stop());
+  }
+
   async function startRecording() {
     const session = sessionRef.current;
     if (!session || isRecordingRef.current) {
@@ -761,7 +832,7 @@ function App() {
     }
 
     if (!isActivatedRef.current) {
-      await activatePresentation();
+      return;
     } else {
       await unlockAudioPlayback();
     }
@@ -770,20 +841,27 @@ function App() {
     currentTurnKindRef.current = 'question';
     resetTurnUi('Listening...');
 
-    const recorder = createPcmRecorder((base64Chunk) => {
-      session.sendRealtimeInput({
-        audio: {
-          data: base64Chunk,
-          mimeType: 'audio/pcm;rate=16000',
-        },
+    try {
+      const recorder = createPcmRecorder((base64Chunk) => {
+        session.sendRealtimeInput({
+          audio: {
+            data: base64Chunk,
+            mimeType: 'audio/pcm;rate=16000',
+          },
+        });
       });
-    });
 
-    recorderRef.current = recorder;
-    session.sendRealtimeInput({ activityStart: {} });
-    await recorder.start();
-    isRecordingRef.current = true;
-    setIsRecording(true);
+      recorderRef.current = recorder;
+      session.sendRealtimeInput({ activityStart: {} });
+      await recorder.start();
+      isRecordingRef.current = true;
+      setIsRecording(true);
+      setUiError('');
+    } catch (error) {
+      setUiError(error instanceof Error ? error.message : 'Microphone access failed.');
+      currentTurnKindRef.current = null;
+      setLiveTranscript('');
+    }
   }
 
   async function stopRecording() {
@@ -846,18 +924,17 @@ function App() {
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== 'Space' || event.repeat) {
-        return;
-      }
-      if (isInteractiveTarget(event.target)) {
-        return;
-      }
-      event.preventDefault();
-      if (!isActivatedRef.current) {
-        void activatePresentation();
-        return;
-      }
-      void startRecording();
+        if (event.code !== 'Space' || event.repeat) {
+          return;
+        }
+        if (isInteractiveTarget(event.target)) {
+          return;
+        }
+        if (!isActivatedRef.current) {
+          return;
+        }
+        event.preventDefault();
+        void startRecording();
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -915,17 +992,9 @@ function App() {
     );
   }
 
-  function getPortraitImageUrl(imageUrl: string) {
-    return getOptimizedImageUrl(imageUrl, {
-      width: isMobile ? 900 : 1080,
-      height: isMobile ? 1600 : 1920,
-      quality: isMobile ? 64 : 70,
-    });
-  }
-
   function handleMicClick() {
     if (!isActivated) {
-      void activatePresentation();
+      return;
     }
   }
 
@@ -951,6 +1020,26 @@ function App() {
     void stopRecording();
   }
 
+  async function handleBegin() {
+    if (isStarting || connectionState !== 'ready') {
+      return;
+    }
+
+    setIsStarting(true);
+    setUiError('');
+
+    try {
+      await prepareMicrophonePermission();
+      await activatePresentation();
+    } catch (error) {
+      setUiError(
+        error instanceof Error ? error.message : 'Microphone permission is required to begin.',
+      );
+    } finally {
+      setIsStarting(false);
+    }
+  }
+
   function handleMicPointerCancel(event: React.PointerEvent<HTMLButtonElement>) {
     if (!isActivated) {
       return;
@@ -969,36 +1058,43 @@ function App() {
 
       <section className="portrait-player">
         <div className="scene-stack" aria-live="off">
-          {slides.map((slide, index) => (
+          {storyImages.map((imageUrl, index) => (
             <figure
-              key={slide.id}
-              className={`scene-layer${index === currentSlideIndex ? ' active' : ''}`}
-              aria-hidden={index !== currentSlideIndex}
+              key={imageUrl}
+              className={`scene-layer${index === activeStoryIndex ? ' active' : ''}`}
+              aria-hidden={index !== activeStoryIndex}
             >
-              <img
-                src={getPortraitImageUrl(slide.imageUrl)}
-                alt={index === currentSlideIndex ? slide.title : ''}
-              />
+              <img src={imageUrl} alt="" />
             </figure>
           ))}
         </div>
 
         <div className="portrait-overlay">
           <div className="story-progress" aria-hidden="true">
-            {slides.length
-              ? slides.map((slide, index) => (
+            {storyImages.length
+              ? storyImages.map((imageUrl, index) => (
                   <span
-                    key={slide.id}
+                    key={imageUrl}
                     className={[
                       'story-segment',
-                      index < currentSlideIndex ? 'done' : '',
-                      index === currentSlideIndex && isActivated ? 'active' : '',
-                      index === currentSlideIndex && !isActivated ? 'current' : '',
+                      index < activeStoryIndex ? 'done' : '',
+                      index === activeStoryIndex && isActivated ? 'active' : '',
+                      index === activeStoryIndex && !isActivated ? 'current' : '',
                     ]
                       .filter(Boolean)
                       .join(' ')}
                   >
-                    <span className="story-fill" />
+                    <span
+                      className="story-fill"
+                      style={{
+                        transform:
+                          index < activeStoryIndex
+                            ? 'scaleX(1)'
+                            : index === activeStoryIndex
+                              ? `scaleX(${isActivated ? activeStoryProgressPercent / 100 : 0.22})`
+                              : 'scaleX(0)',
+                      }}
+                    />
                   </span>
                 ))
               : Array.from({ length: 4 }, (_, index) => (
@@ -1044,9 +1140,7 @@ function App() {
               type="button"
               className={`center-mic${isRecording ? ' active' : ''}`}
               aria-label={
-                !isActivated
-                  ? 'Begin presentation'
-                  : isRecording
+                isRecording
                     ? 'Release to ask a question'
                     : 'Hold to ask a question'
               }
@@ -1054,7 +1148,7 @@ function App() {
               onPointerDown={handleMicPointerDown}
               onPointerUp={handleMicPointerUp}
               onPointerCancel={handleMicPointerCancel}
-              disabled={(connectionState !== 'ready' && !isActivated) || isSwitchingVoice}
+              disabled={!isActivated || connectionState !== 'ready' || isSwitchingVoice}
             >
               <Microphone size={24} weight="fill" />
             </button>
@@ -1083,14 +1177,24 @@ function App() {
             </div>
           </div>
 
-          {connectionState === 'error' ? (
+          {connectionState === 'error' || uiError ? (
             <div className="inline-error" role="alert">
-              {connectionError}
+              {uiError || connectionError}
             </div>
           ) : null}
 
-          {!isActivated && connectionState === 'ready' ? (
-            <p className="begin-hint">Tap the mic to begin.</p>
+          {!isActivated ? (
+            <div className="begin-control">
+              <button
+                type="button"
+                className="begin-button"
+                onClick={() => void handleBegin()}
+                disabled={connectionState !== 'ready' || isStarting}
+              >
+                <span>{isStarting ? 'Starting...' : 'Begin'}</span>
+                <ArrowUpRight size={16} />
+              </button>
+            </div>
           ) : null}
 
           <div className="screen-frame" aria-hidden="true" />

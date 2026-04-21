@@ -36,7 +36,9 @@ interface QuestionRouteResponse {
 }
 
 const VOICE_OPTIONS = ['Zephyr', 'Sulafat', 'Algieba', 'Schedar', 'Achird', 'Kore'] as const;
-const PRE_BEGIN_HOOK = '30 Nights a Year Where Recovery Becomes Real';
+const PRE_BEGIN_HOOK = '30 nights a year where recovery becomes real.';
+const PRE_BEGIN_NOTE =
+  'A quiet walkthrough of protection, rhythm, and return, told one scene at a time.';
 
 function getOptimizedImageUrl(
   imageUrl: string,
@@ -84,96 +86,46 @@ function mergeOutputTranscriptSnapshot(previousText: string, nextText: string) {
     return next;
   }
 
+  const previousWords = previous.split(/\s+/).filter(Boolean);
+  const nextWords = next.split(/\s+/).filter(Boolean);
+  const maxOverlap = Math.min(previousWords.length, nextWords.length);
+
+  for (let overlap = maxOverlap; overlap >= 3; overlap -= 1) {
+    const previousTail = previousWords.slice(-overlap).join(' ');
+    const nextHead = nextWords.slice(0, overlap).join(' ');
+
+    if (previousTail === nextHead) {
+      return `${previousWords.join(' ')} ${nextWords.slice(overlap).join(' ')}`.trim();
+    }
+  }
+
   return `${previous} ${next}`.replace(/\s+/g, ' ').trim();
 }
 
-function buildSubtitleCue(transcript: string) {
+function buildLiveCaption(transcript: string) {
   const text = transcript.replace(/\s+/g, ' ').trim();
-  const totalWords = countWords(text);
 
   if (!text) {
-    return { text: '', totalWords: 0, mode: 'empty' as const };
+    return '';
   }
 
-  const parts = text.split(/(?<=[.!?])\s+/).filter(Boolean);
-  const lastPart = parts.at(-1) ?? '';
-  const hasCompletedEnding = /[.!?]["']?$/.test(text);
-  const tail = hasCompletedEnding ? '' : lastPart;
-  const complete = tail ? parts.slice(0, -1) : parts;
-
-  if (tail) {
-    const tailWords = countWords(tail);
-    if (tailWords >= 7) {
-      const tailWordsList = tail.split(/\s+/).filter(Boolean);
-      return {
-        text: tailWordsList.length > 16 ? tailWordsList.slice(-16).join(' ') : tail,
-        totalWords,
-        mode: 'tail' as const,
-      };
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  if (sentences.length >= 2) {
+    const combined = sentences.slice(-2).join(' ').trim();
+    if (combined.length <= 148 && countWords(combined) <= 22) {
+      return combined;
     }
   }
 
-  if (complete.length > 0) {
-    let cue = complete.at(-1) ?? '';
-    if (complete.length >= 2) {
-      const combined = `${complete.at(-2)} ${cue}`.trim();
-      if (combined.length <= 150 && countWords(combined) <= 20) {
-        cue = combined;
-      }
-    }
-
-    return { text: cue, totalWords, mode: 'sentence' as const };
+  const lastSentence = sentences.at(-1)?.trim();
+  if (lastSentence) {
+    return lastSentence;
   }
 
-  const words = text.split(/\s+/).filter(Boolean);
-  return {
-    text: words.length > 14 ? words.slice(-14).join(' ') : text,
-    totalWords,
-    mode: 'tail' as const,
-  };
-}
-
-function buildTopicSequence(slide: PresentationSlide | null) {
-  if (!slide) {
-    return ['Guided conversation'];
-  }
-
-  const curatedTopics: Record<string, string[]> = {
-    'slide-01': ['When Life Stays Full', 'Recovery Is Maintenance'],
-    'slide-02': ['A Life That Still Hurts'],
-    'slide-03': ['30 Nights a Year', 'Protected Time, Not Escape'],
-    'slide-04': ['7 Years on the Land', '1,300 Acres Restored'],
-    'slide-05': ['Rest Is a Rhythm'],
-    'slide-06': ['Where Recovery Gets Real', 'Places You Can Return To'],
-    'slide-07': ['30 Nights/Year for 10 Years', 'Access Changes Behaviour'],
-    'slide-08': ['Decide With Your Feet'],
-    'slide-09': ['The Cost of Waiting', 'Another Year Unchanged'],
-    'slide-10': ['Start With a Trial Stay', 'Experience Before Commitment'],
-  };
-
-  if (curatedTopics[slide.id]) {
-    return curatedTopics[slide.id];
-  }
-
-  const content = `${slide.title} ${slide.note} ${slide.script}`.toLowerCase();
-
-  if (slide.kind === 'cta') {
-    return ['Start With a Trial Stay', 'Your Next Step'];
-  }
-
-  if (slide.kind === 'quote') {
-    if (content.includes('feet')) {
-      return ['Decide With Your Feet'];
-    }
-    return ['A Quiet Reset'];
-  }
-
-  if (slide.kind === 'derived') {
-    return [slide.title, 'Going deeper'];
-  }
-
-  const noteLead = slide.note.split('.').at(0)?.trim();
-  return [noteLead || slide.title].slice(0, 2);
+  const clauses = text.split(/(?<=[,;:])\s+/).filter(Boolean);
+  const tail = clauses.at(-1)?.trim() ?? text;
+  const words = tail.split(/\s+/).filter(Boolean);
+  return words.length > 14 ? words.slice(-14).join(' ') : tail;
 }
 
 function isSystemCaptionLabel(text: string) {
@@ -204,7 +156,6 @@ function App() {
   const [uiError, setUiError] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
-  const [topicIndex, setTopicIndex] = useState(0);
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
@@ -222,69 +173,38 @@ function App() {
   const currentSlideIndexRef = useRef(0);
   const isActivatedRef = useRef(false);
   const handledQuestionTranscriptRef = useRef('');
-  const subtitleTimeoutRef = useRef<number | null>(null);
-  const lastSubtitleTextRef = useRef('');
-  const subtitleCommitWordCountRef = useRef(0);
-  const topicTimeoutRef = useRef<number | null>(null);
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
-  const storyImages = useMemo(
+  const slideVisuals = useMemo(
     () =>
-      [
-        ...new Set(
-          slides
-            .map((slide) =>
-              getOptimizedImageUrl(slide.imageUrl, {
-                width: isMobile ? 900 : 1080,
-                height: isMobile ? 1600 : 1920,
-                quality: isMobile ? 64 : 70,
-              }),
-            )
-            .filter(Boolean),
-        ),
-      ],
+      slides.map((slide) => ({
+        id: slide.id,
+        imageUrl: getOptimizedImageUrl(slide.imageUrl, {
+          width: isMobile ? 900 : 1080,
+          height: isMobile ? 1600 : 1920,
+          quality: isMobile ? 70 : 76,
+        }),
+      })),
     [isMobile, slides],
   );
   const overallProgressPercent = slides.length
     ? ((currentSlideIndex + (isActivated ? 1 : 0)) / slides.length) * 100
     : 0;
-  const STORY_DURATION_MS = 14000;
-  const [storyElapsedMs, setStoryElapsedMs] = useState(0);
-  const activeStoryIndex = storyImages.length
-    ? Math.floor(storyElapsedMs / STORY_DURATION_MS) % storyImages.length
-    : 0;
-  const activeStoryProgressPercent = storyImages.length
-    ? ((storyElapsedMs % STORY_DURATION_MS) / STORY_DURATION_MS) * 100
-    : 0;
-  const topicSequence = useMemo(() => buildTopicSequence(currentSlide), [currentSlide]);
-  const activeTopic = topicSequence[Math.min(topicIndex, topicSequence.length - 1)] ?? '';
-  const visibleTopic = isActivated ? activeTopic : PRE_BEGIN_HOOK;
+  const sceneEyebrow = isActivated ? `${presentationTitle} • Scene ${currentSlideIndex + 1}` : presentationTitle;
+  const sceneHeading = isActivated ? currentSlide?.title ?? PRE_BEGIN_HOOK : PRE_BEGIN_HOOK;
+  const sceneNote = isActivated ? currentSlide?.note ?? PRE_BEGIN_NOTE : PRE_BEGIN_NOTE;
 
   useEffect(() => {
     slidesRef.current = slides;
   }, [slides]);
 
   useEffect(() => {
-    const uniqueImageUrls = [
-      ...new Set(
-        slides
-          .map((slide) =>
-            getOptimizedImageUrl(slide.imageUrl, {
-              width: isMobile ? 900 : 1080,
-              height: isMobile ? 1600 : 1920,
-              quality: isMobile ? 64 : 70,
-            }),
-          )
-          .filter(Boolean),
-      ),
-    ];
-
-    for (const imageUrl of uniqueImageUrls) {
+    for (const { imageUrl } of slideVisuals) {
       const image = new window.Image();
       image.src = imageUrl;
     }
-  }, [isMobile, slides]);
+  }, [slideVisuals]);
 
   useEffect(() => {
     currentSlideIndexRef.current = currentSlideIndex;
@@ -295,46 +215,15 @@ function App() {
   }, [isActivated]);
 
   useEffect(() => {
-    if (!isActivated || storyImages.length === 0) {
-      setStoryElapsedMs(0);
-      return;
-    }
-
-    const startedAt = performance.now();
-    let rafId = 0;
-
-    const tick = (now: number) => {
-      setStoryElapsedMs(now - startedAt);
-      rafId = window.requestAnimationFrame(tick);
-    };
-
-    rafId = window.requestAnimationFrame(tick);
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-    };
-  }, [isActivated, storyImages.length]);
-
-  useEffect(() => {
     setDisplaySubtitle('');
     setIsSubtitleVisible(false);
-    lastSubtitleTextRef.current = '';
-    subtitleCommitWordCountRef.current = 0;
   }, [currentSlide?.id]);
 
   useEffect(() => {
-    const latestNarrationCue = buildSubtitleCue(latestOutputTranscript);
     let nextSubtitle = '';
 
-    if (latestNarrationCue.text) {
-      if (
-        latestNarrationCue.mode === 'tail' &&
-        displaySubtitle &&
-        latestNarrationCue.totalWords - subtitleCommitWordCountRef.current < 6
-      ) {
-        return;
-      }
-      nextSubtitle = latestNarrationCue.text;
+    if (latestOutputTranscript.trim()) {
+      nextSubtitle = buildLiveCaption(latestOutputTranscript);
     } else if (isRecording) {
       nextSubtitle = liveTranscript.trim() || 'Listening...';
     } else if (!isActivated) {
@@ -343,69 +232,9 @@ function App() {
       nextSubtitle = liveTranscript.trim();
     }
 
-    if (nextSubtitle === lastSubtitleTextRef.current) {
-      return;
-    }
-
-    if (subtitleTimeoutRef.current !== null) {
-      window.clearTimeout(subtitleTimeoutRef.current);
-      subtitleTimeoutRef.current = null;
-    }
-
-    lastSubtitleTextRef.current = nextSubtitle;
-
-    if (!nextSubtitle) {
-      setDisplaySubtitle('');
-      setIsSubtitleVisible(false);
-      subtitleCommitWordCountRef.current = 0;
-      return;
-    }
-
-    const shouldAnimateIn = !displaySubtitle;
-    subtitleTimeoutRef.current = window.setTimeout(
-      () => {
-        setDisplaySubtitle(nextSubtitle);
-        if (shouldAnimateIn) {
-          setIsSubtitleVisible(true);
-        }
-        if (latestNarrationCue.text) {
-          subtitleCommitWordCountRef.current = latestNarrationCue.totalWords;
-        }
-      },
-      shouldAnimateIn ? 120 : 320,
-    );
-
-    return () => {
-      if (subtitleTimeoutRef.current !== null) {
-        window.clearTimeout(subtitleTimeoutRef.current);
-        subtitleTimeoutRef.current = null;
-      }
-    };
-  }, [displaySubtitle, isActivated, isRecording, latestOutputTranscript, liveTranscript]);
-
-  useEffect(() => {
-    if (topicTimeoutRef.current !== null) {
-      window.clearTimeout(topicTimeoutRef.current);
-      topicTimeoutRef.current = null;
-    }
-
-    setTopicIndex(0);
-
-    if (!isActivated || topicSequence.length < 2) {
-      return;
-    }
-
-    topicTimeoutRef.current = window.setTimeout(() => {
-      setTopicIndex(1);
-    }, 18000);
-
-    return () => {
-      if (topicTimeoutRef.current !== null) {
-        window.clearTimeout(topicTimeoutRef.current);
-        topicTimeoutRef.current = null;
-      }
-    };
-  }, [currentSlide?.id, isActivated, topicSequence.length]);
+    setDisplaySubtitle(nextSubtitle);
+    setIsSubtitleVisible(Boolean(nextSubtitle));
+  }, [isActivated, isRecording, latestOutputTranscript, liveTranscript]);
 
   function clearTranscriptQueue() {
     for (const timeoutId of transcriptTimeoutsRef.current) {
@@ -680,9 +509,6 @@ function App() {
       clearTranscriptQueue();
       clearAutoAdvance();
       clearQuestionCommandTimeout();
-      if (subtitleTimeoutRef.current !== null) {
-        window.clearTimeout(subtitleTimeoutRef.current);
-      }
       sessionRef.current?.close();
       recorderRef.current?.dispose().catch(() => undefined);
       playerRef.current?.dispose().catch(() => undefined);
@@ -1188,11 +1014,11 @@ function App() {
 
       <section className="portrait-player" aria-label={presentationTitle}>
         <div className="scene-stack" aria-live="off">
-          {storyImages.map((imageUrl, index) => (
+          {slideVisuals.map(({ id, imageUrl }, index) => (
             <figure
-              key={imageUrl}
-              className={`scene-layer motion-${index % 3}${index === activeStoryIndex ? ' active' : ''}`}
-              aria-hidden={index !== activeStoryIndex}
+              key={id}
+              className={`scene-layer motion-${index % 3}${index === currentSlideIndex ? ' active' : ''}`}
+              aria-hidden={index !== currentSlideIndex}
             >
               <img src={imageUrl} alt="" />
             </figure>
@@ -1200,42 +1026,39 @@ function App() {
         </div>
 
         <div className="portrait-overlay">
-          <div className="story-progress" aria-hidden="true">
-            {storyImages.length
-              ? storyImages.map((imageUrl, index) => (
+          {isActivated ? (
+            <div className="story-progress" aria-hidden="true">
+              {slides.map((slide, index) => (
+                <span
+                  key={slide.id}
+                  className={[
+                    'story-segment',
+                    index < currentSlideIndex ? 'done' : '',
+                    index === currentSlideIndex ? 'current' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
                   <span
-                    key={imageUrl}
-                    className={[
-                      'story-segment',
-                      index < activeStoryIndex ? 'done' : '',
-                      index === activeStoryIndex && isActivated ? 'active' : '',
-                      index === activeStoryIndex && !isActivated ? 'current' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                  >
-                    <span
-                      className="story-fill"
-                      style={{
-                        transform:
-                          index < activeStoryIndex
-                            ? 'scaleX(1)'
-                            : index === activeStoryIndex
-                              ? `scaleX(${isActivated ? activeStoryProgressPercent / 100 : 0.22})`
-                              : 'scaleX(0)',
-                      }}
-                    />
-                  </span>
-                ))
-              : Array.from({ length: 4 }, (_, index) => (
-                  <span key={index} className="story-segment">
-                    <span className="story-fill" />
-                  </span>
-                ))}
-          </div>
+                    className="story-fill"
+                    style={{
+                      transform:
+                        index < currentSlideIndex
+                          ? 'scaleX(1)'
+                          : index === currentSlideIndex
+                            ? 'scaleX(0.4)'
+                            : 'scaleX(0)',
+                    }}
+                  />
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className={`topic-heading${isActivated ? '' : ' idle'}`} aria-live="polite">
-            <span>{visibleTopic}</span>
+            <p className="topic-eyebrow">{sceneEyebrow}</p>
+            <h1 className="topic-title">{sceneHeading}</h1>
+            <p className="topic-note">{sceneNote}</p>
           </div>
 
           <div className="voice-corner">
@@ -1303,9 +1126,11 @@ function App() {
             ) : null}
           </div>
 
-          <div className="bottom-progress" aria-hidden="true">
-            <span style={{ width: `${overallProgressPercent}%` }} />
-          </div>
+          {isActivated ? (
+            <div className="bottom-progress" aria-hidden="true">
+              <span style={{ width: `${overallProgressPercent}%` }} />
+            </div>
+          ) : null}
 
           {connectionState === 'error' || uiError ? (
             <div className="inline-error" role="alert">
@@ -1327,14 +1152,16 @@ function App() {
             </div>
           ) : null}
 
-          <button
-            type="button"
-            className="help-button"
-            aria-label="Open presentation help"
-            onClick={() => setIsHelpOpen(true)}
-          >
-            <Question size={16} weight="bold" />
-          </button>
+          {isActivated ? (
+            <button
+              type="button"
+              className="help-button"
+              aria-label="Open presentation help"
+              onClick={() => setIsHelpOpen(true)}
+            >
+              <Question size={16} weight="bold" />
+            </button>
+          ) : null}
 
           {isHelpOpen ? (
             <div className="help-modal-backdrop" role="presentation" onClick={() => setIsHelpOpen(false)}>

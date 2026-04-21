@@ -1,30 +1,28 @@
 const TARGET_SAMPLE_RATE = 16000;
-const OUTPUT_SAMPLE_RATE = 24000;
+const INPUT_PLAYBACK_SAMPLE_RATE = 24000;
+const RECORDER_BUFFER_SIZE = 2048;
+const PLAYBACK_SCHEDULE_LEAD_SECONDS = 0.03;
 
-function downsampleBuffer(input: Float32Array, inputRate: number, outputRate: number) {
-  if (outputRate >= inputRate) {
+function resampleBuffer(input: Float32Array, inputRate: number, outputRate: number) {
+  if (!input.length) {
+    return new Float32Array(0);
+  }
+
+  if (inputRate === outputRate) {
     return input;
   }
 
-  const sampleRateRatio = inputRate / outputRate;
-  const newLength = Math.round(input.length / sampleRateRatio);
+  const sampleRateRatio = outputRate / inputRate;
+  const newLength = Math.max(1, Math.round(input.length * sampleRateRatio));
   const result = new Float32Array(newLength);
-  let offsetResult = 0;
-  let offsetBuffer = 0;
 
-  while (offsetResult < result.length) {
-    const nextOffsetBuffer = Math.round((offsetResult + 1) * sampleRateRatio);
-    let accumulator = 0;
-    let count = 0;
+  for (let i = 0; i < newLength; i += 1) {
+    const sourceIndex = (i * inputRate) / outputRate;
+    const leftIndex = Math.floor(sourceIndex);
+    const rightIndex = Math.min(leftIndex + 1, input.length - 1);
+    const interpolation = sourceIndex - leftIndex;
 
-    for (let i = offsetBuffer; i < nextOffsetBuffer && i < input.length; i += 1) {
-      accumulator += input[i];
-      count += 1;
-    }
-
-    result[offsetResult] = accumulator / count;
-    offsetResult += 1;
-    offsetBuffer = nextOffsetBuffer;
+    result[i] = input[leftIndex] + (input[rightIndex] - input[leftIndex]) * interpolation;
   }
 
   return result;
@@ -69,44 +67,134 @@ export function createPcmRecorder(onChunk: (base64Chunk: string) => void): Recor
   let audioContext: AudioContext | null = null;
   let sourceNode: MediaStreamAudioSourceNode | null = null;
   let processorNode: ScriptProcessorNode | null = null;
+  let mutedNode: GainNode | null = null;
+  let recorderGeneration = 0;
+  let startPromise: Promise<void> | null = null;
 
-  async function start() {
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
-    });
-
-    audioContext = new AudioContext();
-    sourceNode = audioContext.createMediaStreamSource(stream);
-    processorNode = audioContext.createScriptProcessor(4096, 1, 1);
-
-    processorNode.onaudioprocess = (event) => {
-      const input = event.inputBuffer.getChannelData(0);
-      const downsampled = downsampleBuffer(input, audioContext!.sampleRate, TARGET_SAMPLE_RATE);
-      const pcm = floatTo16BitPCM(downsampled);
-      onChunk(bytesToBase64(pcm));
-    };
-
-    sourceNode.connect(processorNode);
-    processorNode.connect(audioContext.destination);
-  }
-
-  async function stop() {
+  async function cleanupRecorderResources() {
     processorNode?.disconnect();
     sourceNode?.disconnect();
+    mutedNode?.disconnect();
     processorNode = null;
     sourceNode = null;
+    mutedNode = null;
 
     stream?.getTracks().forEach((track) => track.stop());
     stream = null;
 
     if (audioContext) {
-      await audioContext.close();
+      const contextToClose = audioContext;
       audioContext = null;
+
+      if (contextToClose.state !== 'closed') {
+        await contextToClose.close();
+      }
     }
+  }
+
+  async function start() {
+    if (stream && audioContext && processorNode && sourceNode) {
+      if (audioContext.state === 'suspended') {
+        await audioContext.resume();
+      }
+      return;
+    }
+
+    if (startPromise) {
+      return startPromise;
+    }
+
+    const generation = ++recorderGeneration;
+
+    startPromise = (async () => {
+      const nextStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        },
+      });
+
+      const nextContext = new AudioContext({ latencyHint: 'interactive' });
+      const nextSourceNode = nextContext.createMediaStreamSource(nextStream);
+      const nextProcessorNode = nextContext.createScriptProcessor(RECORDER_BUFFER_SIZE, 1, 1);
+      const nextMutedNode = nextContext.createGain();
+      nextMutedNode.gain.value = 0;
+
+      nextProcessorNode.onaudioprocess = (event) => {
+        if (generation !== recorderGeneration) {
+          return;
+        }
+
+        const input = event.inputBuffer.getChannelData(0);
+        if (!input.length) {
+          return;
+        }
+
+        const downsampled = resampleBuffer(
+          input,
+          event.inputBuffer.sampleRate,
+          TARGET_SAMPLE_RATE,
+        );
+        if (!downsampled.length) {
+          return;
+        }
+
+        const pcm = floatTo16BitPCM(downsampled);
+        onChunk(bytesToBase64(pcm));
+      };
+
+      try {
+        await nextContext.resume();
+        nextSourceNode.connect(nextProcessorNode);
+        nextProcessorNode.connect(nextMutedNode);
+        nextMutedNode.connect(nextContext.destination);
+
+        if (generation !== recorderGeneration) {
+          nextProcessorNode.disconnect();
+          nextSourceNode.disconnect();
+          nextMutedNode.disconnect();
+          nextStream.getTracks().forEach((track) => track.stop());
+          await nextContext.close();
+          return;
+        }
+
+        stream = nextStream;
+        audioContext = nextContext;
+        sourceNode = nextSourceNode;
+        processorNode = nextProcessorNode;
+        mutedNode = nextMutedNode;
+      } catch (error) {
+        nextProcessorNode.disconnect();
+        nextSourceNode.disconnect();
+        nextMutedNode.disconnect();
+        nextStream.getTracks().forEach((track) => track.stop());
+
+        if (nextContext.state !== 'closed') {
+          await nextContext.close();
+        }
+
+        throw error;
+      }
+    })().finally(() => {
+      startPromise = null;
+    });
+
+    return startPromise;
+  }
+
+  async function stop() {
+    recorderGeneration += 1;
+
+    if (startPromise) {
+      try {
+        await startPromise;
+      } catch {
+        // Propagate the original start error to the caller, but still run cleanup.
+      }
+    }
+
+    await cleanupRecorderResources();
   }
 
   async function dispose() {
@@ -141,58 +229,107 @@ function pcm16ToFloat32(bytes: Uint8Array) {
 
 export function createPcmPlayer(): AudioPlayerHandle {
   let audioContext: AudioContext | null = null;
+  let outputNode: GainNode | null = null;
   let nextStartTime = 0;
-  const activeSources = new Set<AudioBufferSourceNode>();
+  let enqueueChain = Promise.resolve();
+  let queueGeneration = 0;
+  const activeSources = new Map<AudioBufferSourceNode, number>();
+
+  function pruneFinishedSources(currentTime: number) {
+    for (const [source, endTime] of activeSources) {
+      if (endTime <= currentTime) {
+        activeSources.delete(source);
+      }
+    }
+  }
 
   async function ensureContext() {
     if (!audioContext) {
-      audioContext = new AudioContext({ sampleRate: OUTPUT_SAMPLE_RATE });
+      audioContext = new AudioContext({
+        latencyHint: 'interactive',
+        sampleRate: INPUT_PLAYBACK_SAMPLE_RATE,
+      });
+      outputNode = audioContext.createGain();
+      outputNode.connect(audioContext.destination);
     }
 
     if (audioContext.state === 'suspended') {
       await audioContext.resume();
     }
 
-    if (nextStartTime < audioContext.currentTime) {
-      nextStartTime = audioContext.currentTime;
+    pruneFinishedSources(audioContext.currentTime);
+
+    if (nextStartTime < audioContext.currentTime + PLAYBACK_SCHEDULE_LEAD_SECONDS) {
+      nextStartTime = audioContext.currentTime + PLAYBACK_SCHEDULE_LEAD_SECONDS;
     }
 
     return audioContext;
   }
 
   async function enqueue(base64Chunk: string) {
-    const context = await ensureContext();
-    const samples = pcm16ToFloat32(base64ToBytes(base64Chunk));
-    if (!samples.length) {
-      return;
-    }
+    const generation = queueGeneration;
 
-    const buffer = context.createBuffer(1, samples.length, OUTPUT_SAMPLE_RATE);
-    buffer.copyToChannel(samples, 0);
+    const task = enqueueChain.then(async () => {
+      if (generation !== queueGeneration) {
+        return;
+      }
 
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(context.destination);
-    source.onended = () => {
-      activeSources.delete(source);
-    };
+      const context = await ensureContext();
+      if (generation !== queueGeneration) {
+        return;
+      }
 
-    activeSources.add(source);
-    source.start(nextStartTime);
-    nextStartTime += buffer.duration;
+      const inputSamples = pcm16ToFloat32(base64ToBytes(base64Chunk));
+      if (!inputSamples.length) {
+        return;
+      }
+
+      const playbackSamples = resampleBuffer(
+        inputSamples,
+        INPUT_PLAYBACK_SAMPLE_RATE,
+        context.sampleRate,
+      );
+      if (!playbackSamples.length) {
+        return;
+      }
+
+      const buffer = context.createBuffer(1, playbackSamples.length, context.sampleRate);
+      buffer.getChannelData(0).set(playbackSamples);
+
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.connect(outputNode ?? context.destination);
+
+      const startTime = Math.max(nextStartTime, context.currentTime + PLAYBACK_SCHEDULE_LEAD_SECONDS);
+      const endTime = startTime + buffer.duration;
+
+      source.onended = () => {
+        activeSources.delete(source);
+      };
+
+      activeSources.set(source, endTime);
+      source.start(startTime);
+      nextStartTime = endTime;
+    });
+
+    enqueueChain = task.catch(() => undefined);
+    return task;
   }
 
   async function prepare() {
     const context = await ensureContext();
-    const buffer = context.createBuffer(1, 1, OUTPUT_SAMPLE_RATE);
+    const buffer = context.createBuffer(1, 1, context.sampleRate);
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(context.destination);
-    source.start();
+    source.connect(outputNode ?? context.destination);
+    source.start(context.currentTime);
   }
 
   function reset() {
-    for (const source of activeSources) {
+    queueGeneration += 1;
+    enqueueChain = Promise.resolve();
+
+    for (const source of activeSources.keys()) {
       try {
         source.stop();
       } catch {
@@ -213,6 +350,12 @@ export function createPcmPlayer(): AudioPlayerHandle {
       return 0;
     }
 
+    pruneFinishedSources(audioContext.currentTime);
+
+    if (!activeSources.size && nextStartTime < audioContext.currentTime) {
+      nextStartTime = audioContext.currentTime;
+    }
+
     return Math.max(0, nextStartTime - audioContext.currentTime) * 1000;
   }
 
@@ -220,8 +363,15 @@ export function createPcmPlayer(): AudioPlayerHandle {
     reset();
 
     if (audioContext) {
-      await audioContext.close();
+      outputNode?.disconnect();
+      outputNode = null;
+
+      const contextToClose = audioContext;
       audioContext = null;
+
+      if (contextToClose.state !== 'closed') {
+        await contextToClose.close();
+      }
     }
   }
 

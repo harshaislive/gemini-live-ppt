@@ -1224,28 +1224,24 @@ function App() {
                 >
                   <X size={16} weight="bold" />
                 </button>
-                <p className="help-kicker">Before You Begin</p>
-                <h2 id="help-title">What to expect</h2>
+                <p className="help-kicker">Beforest Guide</p>
+                <h2 id="help-title">A short, guided walkthrough.</h2>
                 <p className="help-copy">
-                  This is a guided Beforest presentation with live narration. It will move scene by
-                  scene on its own, and you can interrupt with a question whenever you want.
+                  It moves on its own, you can interrupt with a question at any point, and the
+                  final scene offers the next step when the story gets there.
                 </p>
                 <div className="help-grid">
                   <div>
                     <strong>Runtime</strong>
-                    <span>Roughly 4 to 6 minutes, depending on questions.</span>
+                    <span>Usually 4 to 6 minutes.</span>
                   </div>
                   <div>
-                    <strong>Ask Questions</strong>
-                    <span>Press and hold the mic while speaking, then release.</span>
+                    <strong>Questions</strong>
+                    <span>Hold the mic, speak, then release.</span>
                   </div>
                   <div>
                     <strong>Voice</strong>
-                    <span>Use the voice control near the top if you want a different narrator.</span>
-                  </div>
-                  <div>
-                    <strong>Ending</strong>
-                    <span>The final scene offers the trial stay when the story reaches that point.</span>
+                    <span>Switch narrators from the top control.</span>
                   </div>
                 </div>
               </section>

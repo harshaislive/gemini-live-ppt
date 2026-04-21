@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beforest Reels Mockup - Editorial Monolith</title>
+    <style>
+      @font-face {
+        font-family: "ABC Arizona Flare";
+        src:
+          url("../../public/fonts/ABCArizonaFlare-Light-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaFlare-Light-Trial.woff") format("woff");
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "ABC Arizona Flare";
+        src:
+          url("../../public/fonts/ABCArizonaFlare-Regular-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaFlare-Regular-Trial.woff") format("woff");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "ABC Arizona Sans";
+        src:
+          url("../../public/fonts/ABCArizonaSans-Regular-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaSans-Regular-Trial.woff") format("woff");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      :root {
+        --earth: #342e29;
+        --earth-deep: #4b3c35;
+        --forest: #344736;
+        --red: #86312b;
+        --yellow: #ffc083;
+        --green: #b8dc99;
+        --blue: #b0ddf1;
+        --paper: #fdfbf7;
+        --mist: #e7e4df;
+        --charcoal: #51514d;
+        --line: rgba(253, 251, 247, 0.22);
+        --line-soft: rgba(253, 251, 247, 0.1);
+        --text-soft: rgba(253, 251, 247, 0.74);
+        --text-faint: rgba(253, 251, 247, 0.5);
+        --shadow: 0 36px 90px rgba(0, 0, 0, 0.42);
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 18% 14%, rgba(184, 220, 153, 0.18), transparent 28%),
+          radial-gradient(circle at 82% 14%, rgba(255, 192, 131, 0.14), transparent 28%),
+          radial-gradient(circle at 50% 100%, rgba(176, 221, 241, 0.12), transparent 36%),
+          linear-gradient(180deg, #241f1b 0%, #342e29 44%, #4b3c35 100%);
+        color: var(--paper);
+        font-family: "ABC Arizona Sans", sans-serif;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        pointer-events: none;
+      }
+
+      body::before {
+        inset: 0;
+        opacity: 0.22;
+        background-image:
+          linear-gradient(rgba(253, 251, 247, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(253, 251, 247, 0.04) 1px, transparent 1px);
+        background-size: 38px 38px;
+        mask-image: radial-gradient(circle at center, black 28%, transparent 84%);
+      }
+
+      body::after {
+        inset: auto;
+        width: 32rem;
+        height: 32rem;
+        right: -8rem;
+        bottom: -10rem;
+        border-radius: 50%;
+        background: rgba(134, 49, 43, 0.16);
+        filter: blur(90px);
+      }
+
+      .stage {
+        position: relative;
+        width: min(100vw, 452px);
+        height: min(100vh, 803.56px);
+        padding: 18px;
+      }
+
+      .poster {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 38px;
+        background: #1f1a16;
+        border: 1px solid rgba(253, 251, 247, 0.14);
+        box-shadow:
+          inset 0 1px 0 rgba(253, 251, 247, 0.08),
+          var(--shadow);
+        isolation: isolate;
+      }
+
+      .poster::before,
+      .poster::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .poster::before {
+        z-index: 9;
+        border: 1px solid rgba(253, 251, 247, 0.08);
+        border-radius: 30px;
+        margin: 8px;
+      }
+
+      .poster::after {
+        z-index: 4;
+        background-image:
+          radial-gradient(rgba(253, 251, 247, 0.14) 0.6px, transparent 0.7px),
+          radial-gradient(rgba(0, 0, 0, 0.22) 0.6px, transparent 0.7px);
+        background-position: 0 0, 12px 14px;
+        background-size: 16px 16px;
+        mix-blend-mode: soft-light;
+        opacity: 0.34;
+      }
+
+      .scene-stack {
+        position: absolute;
+        inset: 0;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        transition: opacity 1s ease;
+      }
+
+      .scene.active {
+        opacity: 1;
+      }
+
+      .scene-image {
+        position: absolute;
+        inset: -3%;
+        background-position: center;
+        background-size: cover;
+        filter: saturate(0.84) contrast(1.04) brightness(0.78);
+        transform: scale(1.08);
+        animation: drift 16s ease-in-out infinite alternate;
+      }
+
+      .scene[data-tone="forest"] .scene-image {
+        filter: saturate(0.8) contrast(1) brightness(0.76) sepia(0.04);
+      }
+
+      .scene[data-tone="mist"] .scene-image {
+        filter: saturate(0.76) contrast(0.98) brightness(0.9);
+      }
+
+      .scene[data-tone="earth"] .scene-image {
+        filter: saturate(0.88) contrast(1.02) brightness(0.78) sepia(0.06);
+      }
+
+      .scene[data-tone="ember"] .scene-image {
+        filter: saturate(0.86) contrast(1.04) brightness(0.72);
+        animation-name: drift-alt;
+      }
+
+      .wash,
+      .gradient-pass,
+      .subtitle-shadow {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .wash {
+        z-index: 2;
+        background:
+          linear-gradient(180deg, rgba(18, 15, 13, 0.06) 0%, rgba(18, 15, 13, 0.18) 20%, rgba(18, 15, 13, 0.44) 100%),
+          linear-gradient(135deg, rgba(0, 33, 64, 0.26) 0%, transparent 36%, transparent 62%, rgba(134, 49, 43, 0.24) 100%);
+      }
+
+      .gradient-pass {
+        z-index: 3;
+        background:
+          radial-gradient(circle at 18% 24%, rgba(255, 192, 131, 0.24), transparent 26%),
+          radial-gradient(circle at 80% 18%, rgba(184, 220, 153, 0.18), transparent 28%),
+          radial-gradient(circle at 52% 96%, rgba(52, 71, 54, 0.38), transparent 34%);
+        mix-blend-mode: screen;
+        opacity: 0.74;
+      }
+
+      .subtitle-shadow {
+        z-index: 5;
+        background: linear-gradient(180deg, transparent 52%, rgba(17, 14, 12, 0.16) 66%, rgba(17, 14, 12, 0.82) 100%);
+      }
+
+      .editorial-grid,
+      .masthead,
+      .folio-left,
+      .folio-right,
+      .headline-block,
+      .subtitle-zone,
+      .cta-link,
+      .touch-zone {
+        position: absolute;
+        z-index: 7;
+      }
+
+      .editorial-grid {
+        inset: 22px 18px;
+        pointer-events: none;
+      }
+
+      .editorial-grid::before,
+      .editorial-grid::after {
+        content: "";
+        position: absolute;
+        background: var(--line-soft);
+      }
+
+      .editorial-grid::before {
+        left: 70px;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+      }
+
+      .editorial-grid::after {
+        left: 0;
+        right: 0;
+        top: 118px;
+        height: 1px;
+      }
+
+      .masthead {
+        top: 18px;
+        left: 18px;
+        right: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+      }
+
+      .masthead-copy {
+        display: grid;
+        gap: 7px;
+      }
+
+      .issue-line,
+      .issue-meta,
+      .rail-meta,
+      .fact-label,
+      .subtitle-meta,
+      .subtitle-count,
+      .cta-link,
+      .progress-marker {
+        font-size: 10px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+      }
+
+      .issue-line {
+        color: var(--yellow);
+      }
+
+      .issue-meta {
+        color: rgba(253, 251, 247, 0.62);
+      }
+
+      .masthead-word {
+        margin: 0;
+        font-family: "ABC Arizona Flare", serif;
+        font-size: clamp(4.1rem, 18vw, 5.3rem);
+        line-height: 0.84;
+        font-weight: 300;
+        letter-spacing: -0.08em;
+        color: rgba(253, 251, 247, 0.94);
+        text-transform: uppercase;
+      }
+
+      .masthead-word span {
+        color: rgba(253, 251, 247, 0.42);
+      }
+
+      .progress-rail {
+        display: grid;
+        gap: 6px;
+        justify-items: end;
+        width: 34px;
+      }
+
+      .progress-marker {
+        position: relative;
+        width: 100%;
+        height: 52px;
+        overflow: hidden;
+        color: rgba(253, 251, 247, 0.44);
+      }
+
+      .progress-marker::before,
+      .progress-fill {
+        content: "";
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        border-radius: 999px;
+      }
+
+      .progress-marker::before {
+        top: 0;
+        bottom: 0;
+        background: rgba(253, 251, 247, 0.16);
+      }
+
+      .progress-fill {
+        bottom: 0;
+        top: auto;
+        height: 0%;
+        background: linear-gradient(180deg, rgba(255, 192, 131, 0.6), rgba(184, 220, 153, 0.98));
+      }
+
+      .progress-marker.done::after,
+      .progress-marker.active::after {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      .progress-marker.done::after {
+        content: "x";
+        color: rgba(253, 251, 247, 0.72);
+      }
+
+      .progress-marker.active::after {
+        content: "now";
+        color: var(--yellow);
+      }
+
+      .folio-left {
+        left: 18px;
+        top: 160px;
+        bottom: 128px;
+        width: 40px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .folio-left::before {
+        content: "";
+        width: 1px;
+        flex: 1;
+        margin: 12px 0;
+        background: linear-gradient(180deg, rgba(253, 251, 247, 0.04), rgba(253, 251, 247, 0.42), rgba(253, 251, 247, 0.04));
+      }
+
+      .rail-meta {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        color: rgba(253, 251, 247, 0.68);
+      }
+
+      .rail-meta strong {
+        color: var(--paper);
+        font-weight: 400;
+      }
+
+      .folio-right {
+        top: 164px;
+        right: 18px;
+        width: 110px;
+        display: grid;
+        gap: 16px;
+        justify-items: end;
+      }
+
+      .fact-strip {
+        display: grid;
+        gap: 10px;
+        width: 100%;
+      }
+
+      .fact {
+        padding-top: 10px;
+        border-top: 1px solid rgba(253, 251, 247, 0.16);
+      }
+
+      .fact-label {
+        display: block;
+        margin-bottom: 4px;
+        color: rgba(253, 251, 247, 0.48);
+      }
+
+      .fact-value {
+        margin: 0;
+        font-family: "ABC Arizona Flare", serif;
+        font-size: 1.35rem;
+        line-height: 0.92;
+        letter-spacing: -0.05em;
+      }
+
+      .headline-block {
+        left: 88px;
+        right: 58px;
+        top: 184px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .chapter {
+        color: rgba(253, 251, 247, 0.64);
+      }
+
+      .headline {
+        margin: 0;
+        max-width: 7.8ch;
+        font-family: "ABC Arizona Flare", serif;
+        font-size: clamp(2.9rem, 11vw, 4.35rem);
+        line-height: 0.88;
+        letter-spacing: -0.08em;
+        font-weight: 300;
+        text-wrap: balance;
+      }
+
+      .headline em {
+        font-style: normal;
+        color: var(--yellow);
+      }
+
+      .deck-note {
+        margin: 0;
+        max-width: 24ch;
+        padding-left: 20px;
+        border-left: 1px solid rgba(253, 251, 247, 0.18);
+        font-size: 0.96rem;
+        line-height: 1.48;
+        color: var(--text-soft);
+        text-wrap: pretty;
+      }
+
+      .pull-line {
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        gap: 12px;
+        align-items: center;
+        color: rgba(253, 251, 247, 0.56);
+      }
+
+      .pull-line::before {
+        content: "";
+        height: 1px;
+        background: linear-gradient(90deg, rgba(255, 192, 131, 0.7), rgba(255, 192, 131, 0.04));
+      }
+
+      .subtitle-zone {
+        left: 88px;
+        right: 28px;
+        bottom: 28px;
+        display: grid;
+        gap: 12px;
+      }
+
+      .subtitle-meta {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        color: rgba(253, 251, 247, 0.58);
+      }
+
+      .subtitle-count {
+        color: var(--paper);
+      }
+
+      .subtitle-text {
+        margin: 0;
+        max-width: 24ch;
+        min-height: 4.2em;
+        font-size: 1.15rem;
+        line-height: 1.44;
+        letter-spacing: -0.01em;
+        color: var(--paper);
+        text-wrap: pretty;
+        text-shadow: 0 3px 18px rgba(0, 0, 0, 0.44);
+        opacity: 0;
+        transform: translateY(12px);
+        transition:
+          opacity 280ms ease,
+          transform 480ms cubic-bezier(0.18, 0.9, 0.22, 1);
+      }
+
+      .subtitle-text.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .subtitle-rule {
+        position: relative;
+        width: min(100%, 240px);
+        height: 2px;
+        overflow: hidden;
+        background: rgba(253, 251, 247, 0.16);
+      }
+
+      .subtitle-rule::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform-origin: left center;
+        transform: scaleX(0);
+        background: linear-gradient(90deg, var(--paper), var(--yellow), var(--green));
+      }
+
+      .subtitle-rule.animate::after {
+        animation: fill-line var(--subtitle-duration, 2800ms) linear forwards;
+      }
+
+      .cta-link {
+        right: 28px;
+        bottom: 148px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        color: var(--paper);
+        text-decoration: none;
+        opacity: 0;
+        transform: translateY(12px);
+        transition:
+          opacity 360ms ease,
+          transform 360ms ease;
+      }
+
+      .cta-link::before {
+        content: "";
+        width: 40px;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(255, 192, 131, 0.12), rgba(255, 192, 131, 0.94));
+      }
+
+      .cta-link.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .touch-zone {
+        top: 0;
+        bottom: 0;
+        width: 32%;
+        border: 0;
+        background: transparent;
+        appearance: none;
+        cursor: pointer;
+      }
+
+      .touch-zone.prev {
+        left: 0;
+      }
+
+      .touch-zone.next {
+        right: 0;
+      }
+
+      .touch-zone:focus-visible {
+        outline: 1px solid rgba(255, 192, 131, 0.6);
+        outline-offset: -16px;
+      }
+
+      @keyframes drift {
+        0% {
+          transform: scale(1.08) translate3d(-1.4%, -1%, 0);
+        }
+        100% {
+          transform: scale(1.15) translate3d(1.8%, 1.4%, 0);
+        }
+      }
+
+      @keyframes drift-alt {
+        0% {
+          transform: scale(1.08) translate3d(1.2%, -1.4%, 0);
+        }
+        100% {
+          transform: scale(1.16) translate3d(-1.6%, 1.6%, 0);
+        }
+      }
+
+      @keyframes fill-line {
+        from {
+          transform: scaleX(0);
+        }
+        to {
+          transform: scaleX(1);
+        }
+      }
+
+      @media (max-width: 520px) {
+        .stage {
+          width: 100vw;
+          height: 100vh;
+          padding: 0;
+        }
+
+        .poster {
+          border-radius: 0;
+        }
+
+        .poster::before {
+          display: none;
+        }
+
+        .masthead-word {
+          font-size: clamp(3.8rem, 17vw, 5rem);
+        }
+
+        .headline-block {
+          top: 172px;
+          left: 82px;
+          right: 48px;
+        }
+
+        .headline {
+          max-width: 8ch;
+          font-size: clamp(2.6rem, 12vw, 4rem);
+        }
+
+        .subtitle-zone {
+          left: 82px;
+          right: 20px;
+          bottom: 24px;
+        }
+
+        .folio-right {
+          right: 14px;
+          width: 94px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <section class="poster" id="poster" aria-label="Beforest editorial reels mockup">
+        <div class="scene-stack" id="sceneStack"></div>
+        <div class="wash"></div>
+        <div class="gradient-pass"></div>
+        <div class="subtitle-shadow"></div>
+
+        <div class="editorial-grid" aria-hidden="true"></div>
+
+        <header class="masthead">
+          <div class="masthead-copy">
+            <div class="issue-line">Beforest / Editorial Monolith / Portrait 9:16</div>
+            <h1 class="masthead-word">Bef<span>orest</span></h1>
+            <div class="issue-meta">The 10% Life / immersive premium study / subtitles on-image only</div>
+          </div>
+          <div class="progress-rail" id="progressRail" aria-hidden="true"></div>
+        </header>
+
+        <div class="folio-left">
+          <div class="rail-meta">Issue <strong>02</strong></div>
+          <div class="rail-meta">Quiet certainty / land first / scene-led</div>
+        </div>
+
+        <aside class="folio-right">
+          <div class="fact-strip" id="factStrip"></div>
+        </aside>
+
+        <section class="headline-block">
+          <div class="chapter issue-meta" id="chapter"></div>
+          <h2 class="headline" id="headline"></h2>
+          <p class="deck-note" id="deckNote"></p>
+          <div class="pull-line issue-meta" id="pullLine"></div>
+        </section>
+
+        <div class="subtitle-zone" aria-live="polite">
+          <div class="subtitle-meta">
+            <span>Narration</span>
+            <span class="subtitle-count" id="subtitleCount"></span>
+          </div>
+          <p class="subtitle-text visible" id="subtitleText"></p>
+          <div class="subtitle-rule" id="subtitleRule"></div>
+        </div>
+
+        <a
+          class="cta-link"
+          id="ctaLink"
+          href="https://hospitality.beforest.co"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Start your trial
+        </a>
+
+        <button class="touch-zone prev" id="prevScene" aria-label="Previous scene"></button>
+        <button class="touch-zone next" id="nextScene" aria-label="Next scene"></button>
+      </section>
+    </main>
+
+    <script>
+      const scenes = [
+        {
+          id: "slide-01",
+          tone: "earth",
+          chapter: "Scene 01 / The 10% Life / opening frame",
+          title: "Full calendars do not make <em>full lives</em>.",
+          note:
+            "Name the quiet erosion of overcapacity. Restoration is maintenance, not a luxury.",
+          pull: "Most ambitious lives do not break from lack of drive.",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0209.jpg",
+          facts: [
+            { label: "Frame", value: "01" },
+            { label: "Focus", value: "Recovery" },
+            { label: "Tension", value: "Erosion" }
+          ],
+          subtitles: [
+            "Full calendars do not make full lives.",
+            "Most ambitious lives do not break from lack of drive.",
+            "They break when there is nowhere protected for recovery.",
+            "Restoration is maintenance."
+          ]
+        },
+        {
+          id: "slide-03",
+          tone: "forest",
+          chapter: "Scene 02 / Reframe / protected rhythm",
+          title: "You do not need <em>escape</em>. You need protected time.",
+          note:
+            "Thirty nights a year is a practice of return, not a disappearance from life.",
+          pull: "Rhythm depends on trust.",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0814.jpg",
+          facts: [
+            { label: "Rhythm", value: "30 nights" },
+            { label: "Promise", value: "Return" },
+            { label: "Ground", value: "Trust" }
+          ],
+          subtitles: [
+            "Thirty nights a year is not a fantasy number.",
+            "It is enough to interrupt the long drift of fatigue.",
+            "You are trying to build a rhythm that keeps returning you to yourself.",
+            "The point is repeated contact with quiet, with sleep, with a different pace of attention."
+          ]
+        },
+        {
+          id: "slide-04",
+          tone: "mist",
+          chapter: "Scene 03 / Evidence / substance before story",
+          title: "Trust should be built on <em>land</em>, not language.",
+          note:
+            "Seven years, six collectives, restored land, and real families inside the rhythm.",
+          pull: "The land has already done the convincing.",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PSX_20211216_190054.webp",
+          facts: [
+            { label: "Years", value: "7" },
+            { label: "Collectives", value: "6" },
+            { label: "Acres", value: "1300" }
+          ],
+          subtitles: [
+            "Seven years is a long time to build something quietly.",
+            "Six collectives. Thirteen hundred acres restored from degraded farmland.",
+            "Two hundred and fifty families already inside the rhythm.",
+            "Those numbers matter because they are not marketing language."
+          ]
+        },
+        {
+          id: "slide-10",
+          tone: "ember",
+          chapter: "Scene 04 / Pilot stay / smallest real step",
+          title: "Start with the <em>smallest real step</em>.",
+          note:
+            "Move into the trial stay as the pilot. Experience first. Let the land answer before the commitment.",
+          pull: "You decide with your feet, not your eyes.",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_39.png",
+          facts: [
+            { label: "Mode", value: "Pilot" },
+            { label: "Place", value: "Coorg" },
+            { label: "Action", value: "Trial" }
+          ],
+          subtitles: [
+            "The smallest real step is usually the hardest one to take.",
+            "Experience before commitment.",
+            "A few nights in Coorg will tell you more than a polished explanation ever can.",
+            "You decide with your feet, not your eyes."
+          ],
+          ctaLabel: "Start your trial",
+          ctaHref: "https://hospitality.beforest.co"
+        }
+      ];
+
+      const sceneDuration = 11200;
+      const subtitleDuration = 2800;
+
+      const sceneStack = document.getElementById("sceneStack");
+      const progressRail = document.getElementById("progressRail");
+      const factStrip = document.getElementById("factStrip");
+      const chapter = document.getElementById("chapter");
+      const headline = document.getElementById("headline");
+      const deckNote = document.getElementById("deckNote");
+      const pullLine = document.getElementById("pullLine");
+      const subtitleText = document.getElementById("subtitleText");
+      const subtitleCount = document.getElementById("subtitleCount");
+      const subtitleRule = document.getElementById("subtitleRule");
+      const ctaLink = document.getElementById("ctaLink");
+      const prevScene = document.getElementById("prevScene");
+      const nextScene = document.getElementById("nextScene");
+
+      const sceneNodes = scenes.map((scene, index) => {
+        const node = document.createElement("article");
+        node.className = "scene";
+        node.dataset.tone = scene.tone;
+        node.setAttribute("aria-hidden", index === 0 ? "false" : "true");
+        node.innerHTML = `<div class="scene-image" style="background-image:url('${scene.image}')"></div>`;
+        sceneStack.appendChild(node);
+        return node;
+      });
+
+      const progressNodes = scenes.map(() => {
+        const marker = document.createElement("div");
+        marker.className = "progress-marker";
+        const fill = document.createElement("span");
+        fill.className = "progress-fill";
+        marker.appendChild(fill);
+        progressRail.appendChild(marker);
+        return { marker, fill };
+      });
+
+      let activeSceneIndex = 0;
+      let activeSubtitleIndex = 0;
+      let sceneTimer = null;
+      let subtitleTimer = null;
+
+      function resetSubtitleRule() {
+        subtitleRule.classList.remove("animate");
+        void subtitleRule.offsetWidth;
+        subtitleRule.style.setProperty("--subtitle-duration", `${subtitleDuration}ms`);
+        subtitleRule.classList.add("animate");
+      }
+
+      function renderSubtitle(sceneIndex, subtitleIndex) {
+        subtitleText.classList.remove("visible");
+
+        window.setTimeout(() => {
+          if (sceneIndex !== activeSceneIndex) {
+            return;
+          }
+
+          subtitleText.textContent = scenes[sceneIndex].subtitles[subtitleIndex];
+          subtitleText.classList.add("visible");
+        }, 120);
+
+        subtitleCount.textContent = `${String(sceneIndex + 1).padStart(2, "0")} / ${String(
+          scenes.length
+        ).padStart(2, "0")}`;
+
+        resetSubtitleRule();
+      }
+
+      function renderProgress() {
+        progressNodes.forEach(({ marker, fill }, index) => {
+          marker.classList.toggle("done", index < activeSceneIndex);
+          marker.classList.toggle("active", index === activeSceneIndex);
+          fill.style.transition = "none";
+          fill.style.height = index < activeSceneIndex ? "100%" : "0%";
+        });
+
+        const activeFill = progressNodes[activeSceneIndex].fill;
+        window.requestAnimationFrame(() => {
+          activeFill.style.transition = `height ${sceneDuration}ms linear`;
+          activeFill.style.height = "100%";
+        });
+      }
+
+      function renderFacts(scene) {
+        factStrip.innerHTML = scene.facts
+          .map(
+            (fact) => `
+              <div class="fact">
+                <span class="fact-label">${fact.label}</span>
+                <p class="fact-value">${fact.value}</p>
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      function clearTimers() {
+        if (sceneTimer) {
+          window.clearTimeout(sceneTimer);
+        }
+
+        if (subtitleTimer) {
+          window.clearInterval(subtitleTimer);
+        }
+      }
+
+      function showScene(nextIndex) {
+        clearTimers();
+
+        activeSceneIndex = (nextIndex + scenes.length) % scenes.length;
+        activeSubtitleIndex = 0;
+        const scene = scenes[activeSceneIndex];
+
+        sceneNodes.forEach((node, index) => {
+          const isActive = index === activeSceneIndex;
+          node.classList.toggle("active", isActive);
+          node.setAttribute("aria-hidden", isActive ? "false" : "true");
+        });
+
+        chapter.textContent = scene.chapter;
+        headline.innerHTML = scene.title;
+        deckNote.textContent = scene.note;
+        pullLine.textContent = scene.pull;
+
+        renderFacts(scene);
+        renderProgress();
+        renderSubtitle(activeSceneIndex, activeSubtitleIndex);
+
+        ctaLink.textContent = scene.ctaLabel || "Start your trial";
+        ctaLink.href = scene.ctaHref || "https://hospitality.beforest.co";
+        ctaLink.classList.toggle("visible", Boolean(scene.ctaHref));
+
+        subtitleTimer = window.setInterval(() => {
+          activeSubtitleIndex = (activeSubtitleIndex + 1) % scene.subtitles.length;
+          renderSubtitle(activeSceneIndex, activeSubtitleIndex);
+        }, subtitleDuration);
+
+        sceneTimer = window.setTimeout(() => {
+          showScene(activeSceneIndex + 1);
+        }, sceneDuration);
+      }
+
+      prevScene.addEventListener("click", () => showScene(activeSceneIndex - 1));
+      nextScene.addEventListener("click", () => showScene(activeSceneIndex + 1));
+
+      window.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowLeft") {
+          showScene(activeSceneIndex - 1);
+        }
+
+        if (event.key === "ArrowRight") {
+          showScene(activeSceneIndex + 1);
+        }
+      });
+
+      showScene(0);
+    </script>
+  </body>
+</html>

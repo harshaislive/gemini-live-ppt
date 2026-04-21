@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beforest Portrait Reels Concepts</title>
+    <style>
+      @font-face {
+        font-family: 'ABC Arizona Flare';
+        src:
+          url('../../public/fonts/ABCArizonaFlare-Regular-Trial.woff2') format('woff2'),
+          url('../../public/fonts/ABCArizonaFlare-Regular-Trial.woff') format('woff');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'ABC Arizona Flare';
+        src:
+          url('../../public/fonts/ABCArizonaFlare-Light-Trial.woff2') format('woff2'),
+          url('../../public/fonts/ABCArizonaFlare-Light-Trial.woff') format('woff');
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'ABC Arizona Sans';
+        src:
+          url('../../public/fonts/ABCArizonaSans-Regular-Trial.woff2') format('woff2'),
+          url('../../public/fonts/ABCArizonaSans-Regular-Trial.woff') format('woff');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      :root {
+        --earth: #342e29;
+        --earth-deep: #241f1b;
+        --brown: #4b3c35;
+        --forest: #344736;
+        --red: #86312b;
+        --yellow: #ffc083;
+        --green: #b8dc99;
+        --blue: #b0ddf1;
+        --text: #fdfbf7;
+        --text-soft: rgba(253, 251, 247, 0.76);
+        --line: rgba(253, 251, 247, 0.12);
+        --glass: rgba(253, 251, 247, 0.06);
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: 'ABC Arizona Sans', sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(184, 220, 153, 0.12), transparent 32%),
+          radial-gradient(circle at top right, rgba(255, 192, 131, 0.12), transparent 28%),
+          linear-gradient(180deg, #2a2521 0%, #342e29 45%, #1f1b18 100%);
+      }
+
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 30px 30px;
+        mask-image: radial-gradient(circle at center, black, transparent 85%);
+        pointer-events: none;
+      }
+
+      .page {
+        width: min(1400px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 40px 0 64px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.1fr 0.9fr;
+        gap: 24px;
+        align-items: end;
+        margin-bottom: 28px;
+      }
+
+      .hero-copy {
+        padding: 28px;
+        border: 1px solid var(--line);
+        border-radius: 32px;
+        background: linear-gradient(180deg, rgba(75, 60, 53, 0.62), rgba(36, 31, 27, 0.88));
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.28);
+        backdrop-filter: blur(24px);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--yellow);
+        font-size: 0.78rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0 0 14px;
+        font-family: 'ABC Arizona Flare', serif;
+        font-size: clamp(3rem, 6vw, 5.7rem);
+        line-height: 0.9;
+        font-weight: 300;
+        letter-spacing: -0.08em;
+        max-width: 9ch;
+      }
+
+      .hero-copy p {
+        margin: 0;
+        max-width: 60ch;
+        color: var(--text-soft);
+        line-height: 1.65;
+        font-size: 1.05rem;
+      }
+
+      .hero-notes {
+        display: grid;
+        gap: 12px;
+      }
+
+      .note {
+        padding: 20px 22px;
+        border: 1px solid var(--line);
+        border-radius: 26px;
+        background: rgba(253, 251, 247, 0.05);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      }
+
+      .note strong {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--green);
+        font-weight: 400;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+      }
+
+      .note span {
+        color: var(--text-soft);
+        line-height: 1.55;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 22px;
+      }
+
+      .card {
+        display: grid;
+        gap: 16px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 30px;
+        background:
+          linear-gradient(180deg, rgba(253, 251, 247, 0.05), rgba(253, 251, 247, 0.03)),
+          rgba(36, 31, 27, 0.78);
+        box-shadow: 0 24px 70px rgba(0, 0, 0, 0.22);
+      }
+
+      .card-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: start;
+      }
+
+      .card h2 {
+        margin: 0;
+        font-family: 'ABC Arizona Flare', serif;
+        font-size: 1.75rem;
+        font-weight: 300;
+        letter-spacing: -0.05em;
+      }
+
+      .tag {
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--yellow);
+        white-space: nowrap;
+        font-size: 0.72rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .card p {
+        margin: 0;
+        color: var(--text-soft);
+        line-height: 1.55;
+      }
+
+      .frame {
+        position: relative;
+        aspect-ratio: 9 / 16;
+        overflow: hidden;
+        border-radius: 26px;
+        background: rgba(0, 0, 0, 0.24);
+        border: 1px solid rgba(253, 251, 247, 0.08);
+      }
+
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #1b1714;
+      }
+
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 0 16px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--text);
+        text-decoration: none;
+        background: rgba(253, 251, 247, 0.06);
+        transition: transform 180ms ease, background-color 180ms ease;
+      }
+
+      .button:hover {
+        transform: translateY(-1px);
+        background: rgba(253, 251, 247, 0.11);
+      }
+
+      .button.primary {
+        background: var(--yellow);
+        border-color: rgba(255, 192, 131, 0.32);
+        color: var(--earth);
+      }
+
+      @media (max-width: 980px) {
+        .hero {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Beforest x Portrait Reels</p>
+          <h1>Five ways to turn the deck into cinema.</h1>
+          <p>
+            These are intentionally different art-direction passes for a portrait-first experience.
+            The shared rule is the same across all five: the subtitle system lives inside the image
+            or video canvas, not below it, so the whole screen feels like one immersive story field.
+          </p>
+        </div>
+
+        <div class="hero-notes">
+          <div class="note">
+            <strong>What changes</strong>
+            <span>
+              16:9 stage becomes a 9:16 story frame, captions move onto media, controls become
+              discreet overlays, and motion is handled like a reel instead of a deck.
+            </span>
+          </div>
+          <div class="note">
+            <strong>Shared brand system</strong>
+            <span>
+              All concepts use ABC Arizona, the existing Beforest earth palette, and the current
+              slide imagery and language as the raw material.
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Agent 01</p>
+              <h2>Quiet Cinema</h2>
+            </div>
+            <span class="tag">Slow Editorial</span>
+          </div>
+          <p>
+            Minimal chrome, warm grain, and a restrained subtitle block that feels spoken rather
+            than “UI”.
+          </p>
+          <div class="frame">
+            <iframe src="./agent-01-quiet-cinema.html" title="Agent 01 Quiet Cinema"></iframe>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="./agent-01-quiet-cinema.html" target="_blank" rel="noreferrer">Open full concept</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Agent 02</p>
+              <h2>Editorial Monolith</h2>
+            </div>
+            <span class="tag">Bold Poster</span>
+          </div>
+          <p>
+            A more assertive magazine-poster treatment with commanding type tension and oversized
+            framing.
+          </p>
+          <div class="frame">
+            <iframe src="./agent-02-editorial-monolith.html" title="Agent 02 Editorial Monolith"></iframe>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="./agent-02-editorial-monolith.html" target="_blank" rel="noreferrer">Open full concept</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Agent 03</p>
+              <h2>Ritual Glass</h2>
+            </div>
+            <span class="tag">Atmospheric</span>
+          </div>
+          <p>
+            Tactile translucent overlays and ritual pacing, with subtitles fused into the visual
+            atmosphere.
+          </p>
+          <div class="frame">
+            <iframe src="./agent-03-ritual-glass.html" title="Agent 03 Ritual Glass"></iframe>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="./agent-03-ritual-glass.html" target="_blank" rel="noreferrer">Open full concept</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Agent 04</p>
+              <h2>Kinetic Poster</h2>
+            </div>
+            <span class="tag">High Motion</span>
+          </div>
+          <p>
+            Stronger kinetic energy, poster-like transitions, and a reels-native feeling without
+            becoming generic social UI.
+          </p>
+          <div class="frame">
+            <iframe src="./agent-04-kinetic-poster.html" title="Agent 04 Kinetic Poster"></iframe>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="./agent-04-kinetic-poster.html" target="_blank" rel="noreferrer">Open full concept</a>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Agent 05</p>
+              <h2>Slow Luxury</h2>
+            </div>
+            <span class="tag">Refined Calm</span>
+          </div>
+          <p>
+            A quieter, more premium interpretation that leans into restraint, spacing, and a
+            carefully-lit subtitle layer.
+          </p>
+          <div class="frame">
+            <iframe src="./agent-05-slow-luxury.html" title="Agent 05 Slow Luxury"></iframe>
+          </div>
+          <div class="actions">
+            <a class="button primary" href="./agent-05-slow-luxury.html" target="_blank" rel="noreferrer">Open full concept</a>
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

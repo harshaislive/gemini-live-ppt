@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from '@google/genai';
-import { ArrowUpRight, Microphone, PhoneDisconnect } from '@phosphor-icons/react';
+import { ArrowUpRight, Microphone } from '@phosphor-icons/react';
 import {
   createPcmPlayer,
   createPcmRecorder,
@@ -79,9 +79,12 @@ function App() {
   const [slides, setSlides] = useState<PresentationSlide[]>([]);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [transcriptSegments, setTranscriptSegments] = useState<TranscriptSegment[]>([]);
-  const [activeTranscriptId, setActiveTranscriptId] = useState<number | null>(null);
+  const [, setActiveTranscriptId] = useState<number | null>(null);
   const [liveTranscript, setLiveTranscript] = useState('');
   const [selectedVoice, setSelectedVoice] = useState<(typeof VOICE_OPTIONS)[number]>('Zephyr');
+  const [isIntroVisible, setIsIntroVisible] = useState(true);
+  const [displaySubtitle, setDisplaySubtitle] = useState('');
+  const [isSubtitleVisible, setIsSubtitleVisible] = useState(false);
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
@@ -100,16 +103,15 @@ function App() {
   const currentSlideIndexRef = useRef(0);
   const isActivatedRef = useRef(false);
   const handledQuestionTranscriptRef = useRef('');
+  const introTimeoutRef = useRef<number | null>(null);
+  const subtitleTimeoutRef = useRef<number | null>(null);
+  const lastSubtitleTextRef = useRef('');
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
-  const currentSlideImageUrl = currentSlide
-    ? getOptimizedImageUrl(currentSlide.imageUrl, {
-        width: isMobile ? 840 : 1280,
-        height: isMobile ? 473 : 720,
-        quality: isMobile ? 62 : 70,
-      })
-    : '';
+  const overallProgressPercent = slides.length
+    ? ((currentSlideIndex + (isActivated ? 1 : 0)) / slides.length) * 100
+    : 0;
 
   useEffect(() => {
     slidesRef.current = slides;
@@ -121,9 +123,9 @@ function App() {
         slides
           .map((slide) =>
             getOptimizedImageUrl(slide.imageUrl, {
-              width: isMobile ? 840 : 1280,
-              height: isMobile ? 473 : 720,
-              quality: isMobile ? 62 : 70,
+              width: isMobile ? 900 : 1080,
+              height: isMobile ? 1600 : 1920,
+              quality: isMobile ? 64 : 70,
             }),
           )
           .filter(Boolean),
@@ -143,6 +145,75 @@ function App() {
   useEffect(() => {
     isActivatedRef.current = isActivated;
   }, [isActivated]);
+
+  useEffect(() => {
+    if (introTimeoutRef.current !== null) {
+      window.clearTimeout(introTimeoutRef.current);
+      introTimeoutRef.current = null;
+    }
+
+    setIsIntroVisible(true);
+    setDisplaySubtitle('');
+    setIsSubtitleVisible(false);
+    lastSubtitleTextRef.current = '';
+
+    if (!currentSlide) {
+      return;
+    }
+
+    introTimeoutRef.current = window.setTimeout(() => {
+      setIsIntroVisible(false);
+    }, 2100);
+
+    return () => {
+      if (introTimeoutRef.current !== null) {
+        window.clearTimeout(introTimeoutRef.current);
+        introTimeoutRef.current = null;
+      }
+    };
+  }, [currentSlide?.id]);
+
+  useEffect(() => {
+    const latestTranscriptText = transcriptSegments[transcriptSegments.length - 1]?.text?.trim() ?? '';
+    let nextSubtitle = '';
+
+    if (latestTranscriptText) {
+      nextSubtitle = latestTranscriptText;
+    } else if (isRecording) {
+      nextSubtitle = liveTranscript.trim() || 'Listening...';
+    } else if (!isActivated) {
+      nextSubtitle = '';
+    } else if (
+      liveTranscript.trim() &&
+      !['Beforest is speaking...', 'Beforest is responding...'].includes(liveTranscript.trim())
+    ) {
+      nextSubtitle = liveTranscript.trim();
+    }
+
+    if (nextSubtitle === lastSubtitleTextRef.current) {
+      return;
+    }
+
+    lastSubtitleTextRef.current = nextSubtitle;
+    setIsSubtitleVisible(false);
+
+    if (subtitleTimeoutRef.current !== null) {
+      window.clearTimeout(subtitleTimeoutRef.current);
+      subtitleTimeoutRef.current = null;
+    }
+
+    subtitleTimeoutRef.current = window.setTimeout(() => {
+      setDisplaySubtitle(nextSubtitle);
+      setIsSubtitleVisible(Boolean(nextSubtitle));
+    }, 120);
+
+    return () => {
+      if (subtitleTimeoutRef.current !== null) {
+        window.clearTimeout(subtitleTimeoutRef.current);
+        subtitleTimeoutRef.current = null;
+      }
+    };
+  }, [isActivated, isRecording, liveTranscript, transcriptSegments]);
 
   function clearTranscriptQueue() {
     for (const timeoutId of transcriptTimeoutsRef.current) {
@@ -419,6 +490,12 @@ function App() {
       clearTranscriptQueue();
       clearAutoAdvance();
       clearQuestionCommandTimeout();
+      if (introTimeoutRef.current !== null) {
+        window.clearTimeout(introTimeoutRef.current);
+      }
+      if (subtitleTimeoutRef.current !== null) {
+        window.clearTimeout(subtitleTimeoutRef.current);
+      }
       sessionRef.current?.close();
       recorderRef.current?.dispose().catch(() => undefined);
       playerRef.current?.dispose().catch(() => undefined);
@@ -756,16 +833,38 @@ function App() {
       return;
     }
 
+    const isInteractiveTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) {
+        return false;
+      }
+
+      const tagName = target.tagName.toLowerCase();
+      return (
+        target.isContentEditable ||
+        ['input', 'textarea', 'select', 'button', 'a'].includes(tagName)
+      );
+    };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.code !== 'Space' || event.repeat) {
         return;
       }
+      if (isInteractiveTarget(event.target)) {
+        return;
+      }
       event.preventDefault();
+      if (!isActivatedRef.current) {
+        void activatePresentation();
+        return;
+      }
       void startRecording();
     };
 
     const handleKeyUp = (event: KeyboardEvent) => {
       if (event.code !== 'Space') {
+        return;
+      }
+      if (isInteractiveTarget(event.target)) {
         return;
       }
       event.preventDefault();
@@ -816,123 +915,187 @@ function App() {
     );
   }
 
+  function getPortraitImageUrl(imageUrl: string) {
+    return getOptimizedImageUrl(imageUrl, {
+      width: isMobile ? 900 : 1080,
+      height: isMobile ? 1600 : 1920,
+      quality: isMobile ? 64 : 70,
+    });
+  }
+
+  function handleMicClick() {
+    if (!isActivated) {
+      void activatePresentation();
+    }
+  }
+
+  function handleMicPointerDown(event: React.PointerEvent<HTMLButtonElement>) {
+    if (!isActivated || connectionState !== 'ready') {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    void startRecording();
+  }
+
+  function handleMicPointerUp(event: React.PointerEvent<HTMLButtonElement>) {
+    if (!isActivated) {
+      return;
+    }
+
+    event.preventDefault();
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    void stopRecording();
+  }
+
+  function handleMicPointerCancel(event: React.PointerEvent<HTMLButtonElement>) {
+    if (!isActivated) {
+      return;
+    }
+
+    if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    void stopRecording();
+  }
+
   return (
-    <main className="shell">
+    <main className="shell portrait-shell">
       <div className="ambient ambient-a" />
       <div className="ambient ambient-b" />
 
-      <section className="stage">
-        <figure className="hero-image">
-          <div className="hero-chrome">
-            <div className="status-row" aria-label={`Connection status: ${connectionState}`} title={connectionState}>
-              <span className={`status-dot ${connectionState}`} />
-            </div>
+      <section className="portrait-player">
+        <div className="scene-stack" aria-live="off">
+          {slides.map((slide, index) => (
+            <figure
+              key={slide.id}
+              className={`scene-layer${index === currentSlideIndex ? ' active' : ''}`}
+              aria-hidden={index !== currentSlideIndex}
+            >
+              <img
+                src={getPortraitImageUrl(slide.imageUrl)}
+                alt={index === currentSlideIndex ? slide.title : ''}
+              />
+            </figure>
+          ))}
+        </div>
 
-            <div className="voice-switcher">
-              <label htmlFor="voice-select">Voice</label>
-              <select
-                id="voice-select"
-                value={selectedVoice}
-                onChange={(event) =>
-                  void reconnectWithVoice(event.target.value as (typeof VOICE_OPTIONS)[number])
-                }
-                disabled={connectionState === 'connecting' || isRecording || isSwitchingVoice}
-              >
-                {VOICE_OPTIONS.map((voice) => (
-                  <option key={voice} value={voice}>
-                    {voice}
-                  </option>
+        <div className="portrait-overlay">
+          <div className="story-progress" aria-hidden="true">
+            {slides.length
+              ? slides.map((slide, index) => (
+                  <span
+                    key={slide.id}
+                    className={[
+                      'story-segment',
+                      index < currentSlideIndex ? 'done' : '',
+                      index === currentSlideIndex && isActivated ? 'active' : '',
+                      index === currentSlideIndex && !isActivated ? 'current' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    <span className="story-fill" />
+                  </span>
+                ))
+              : Array.from({ length: 4 }, (_, index) => (
+                  <span key={index} className="story-segment">
+                    <span className="story-fill" />
+                  </span>
                 ))}
-              </select>
-            </div>
           </div>
 
-          {currentSlide ? (
-            <img
-              key={currentSlide.id}
-              src={currentSlideImageUrl}
-              alt={currentSlide.title}
-            />
-          ) : null}
-        </figure>
+          <div className={`intro-card${isIntroVisible ? '' : ' hidden'}`}>
+            <p className="intro-label">{presentationTitle}</p>
+            <h1>{currentSlide?.title ?? 'Loading presentation...'}</h1>
+          </div>
 
-        <header className="headline-block">
-          <p className="eyebrow">
-            {presentationTitle}
-            {slides.length ? ` · ${currentSlideIndex + 1}/${slides.length}` : ''}
-          </p>
-          <h1>{currentSlide?.title ?? 'Loading presentation...'}</h1>
-        </header>
-
-        <p className="stream-copy" aria-live="polite">
-          {transcriptSegments.length ? (
-            transcriptSegments.map((segment) => (
-              <span
-                key={segment.id}
-                className={`stream-word${segment.id === activeTranscriptId ? ' latest' : ''}`}
-              >
-                {segment.text}
-              </span>
-            ))
-          ) : (
-            <span className="stream-word placeholder">
-              {liveTranscript ||
-                (isActivated
-                  ? 'The guide will keep moving through the deck. Hold space on desktop or hold the mic on mobile to ask.'
-                  : 'Begin the presentation to unlock narration. The guide will move through the deck automatically.' )}
-            </span>
-          )}
-        </p>
-
-        <div className="action-row">
-          {!isActivated ? (
+          <div className="voice-corner">
+            <label className="sr-only" htmlFor="voice-select">
+              Voice
+            </label>
             <button
               type="button"
-              className="continue-button cta-button"
-              onClick={() => void activatePresentation()}
-              disabled={connectionState !== 'ready'}
+              className={`status-dot status-${connectionState}`}
+              aria-label={`Connection status: ${connectionState}`}
+              title={connectionState}
+            />
+            <select
+              id="voice-select"
+              value={selectedVoice}
+              onChange={(event) =>
+                void reconnectWithVoice(event.target.value as (typeof VOICE_OPTIONS)[number])
+              }
+              disabled={connectionState === 'connecting' || isRecording || isSwitchingVoice}
             >
-              <span>Begin</span>
-              <ArrowUpRight size={18} />
+              {VOICE_OPTIONS.map((voice) => (
+                <option key={voice} value={voice}>
+                  {voice}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="mic-stage">
+            <button
+              type="button"
+              className={`center-mic${isRecording ? ' active' : ''}`}
+              aria-label={
+                !isActivated
+                  ? 'Begin presentation'
+                  : isRecording
+                    ? 'Release to ask a question'
+                    : 'Hold to ask a question'
+              }
+              onClick={handleMicClick}
+              onPointerDown={handleMicPointerDown}
+              onPointerUp={handleMicPointerUp}
+              onPointerCancel={handleMicPointerCancel}
+              disabled={(connectionState !== 'ready' && !isActivated) || isSwitchingVoice}
+            >
+              <Microphone size={24} weight="fill" />
             </button>
-          ) : currentSlide?.ctaHref ? (
-            <a className="continue-button cta-button" href={currentSlide.ctaHref} target="_blank" rel="noreferrer">
-              <span>{currentSlide.ctaLabel ?? 'Start your trial'}</span>
-              <ArrowUpRight size={18} />
-            </a>
-          ) : (
-            <div className="auto-note">
-              <span>Slides advance automatically. Interrupt anytime with a question.</span>
+          </div>
+
+          <div className="subtitle-rail">
+            <p
+              className={`subtitle-line${displaySubtitle && isSubtitleVisible ? ' visible' : ''}`}
+              aria-live="polite"
+            >
+              {displaySubtitle}
+            </p>
+            {isActivated && currentSlide?.ctaHref ? (
+              <a
+                className="cta-chip"
+                href={currentSlide.ctaHref}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <span>{currentSlide.ctaLabel ?? 'Start your trial'}</span>
+                <ArrowUpRight size={14} />
+              </a>
+            ) : null}
+            <div className="bottom-progress" aria-hidden="true">
+              <span style={{ width: `${overallProgressPercent}%` }} />
             </div>
-          )}
+          </div>
+
+          {connectionState === 'error' ? (
+            <div className="inline-error" role="alert">
+              {connectionError}
+            </div>
+          ) : null}
+
+          {!isActivated && connectionState === 'ready' ? (
+            <p className="begin-hint">Tap the mic to begin.</p>
+          ) : null}
+
+          <div className="screen-frame" aria-hidden="true" />
         </div>
       </section>
-
-      <div className="controls">
-        {isMobile ? (
-          <button
-            type="button"
-            className={`mic-button ${isRecording ? 'active' : ''}`}
-            onPointerDown={() => void startRecording()}
-            onPointerUp={() => void stopRecording()}
-            onPointerCancel={() => void stopRecording()}
-          >
-            <Microphone size={28} weight="fill" />
-          </button>
-        ) : (
-          <div className="desktop-hint">
-            <kbd>Space</kbd>
-            <span>{isRecording ? 'Release to ask' : 'Hold to ask a question'}</span>
-          </div>
-        )}
-      </div>
-
-      {connectionState === 'error' ? (
-        <div className="error-banner">
-          <PhoneDisconnect size={18} />
-          <span>{connectionError}</span>
-        </div>
-      ) : null}
     </main>
   );
 }

@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beforest Reels Mockup - Slow Luxury</title>
+    <style>
+      @font-face {
+        font-family: "ABC Arizona Flare";
+        src:
+          url("../../public/fonts/ABCArizonaFlare-Regular-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaFlare-Regular-Trial.woff") format("woff");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "ABC Arizona Flare";
+        src:
+          url("../../public/fonts/ABCArizonaFlare-Light-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaFlare-Light-Trial.woff") format("woff");
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "ABC Arizona Sans";
+        src:
+          url("../../public/fonts/ABCArizonaSans-Regular-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaSans-Regular-Trial.woff") format("woff");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      :root {
+        --earth: #342e29;
+        --earth-deep: #4b3c35;
+        --forest: #344736;
+        --red: #86312b;
+        --yellow: #ffc083;
+        --green: #b8dc99;
+        --blue: #b0ddf1;
+        --paper: #fdfbf7;
+        --muted: rgba(253, 251, 247, 0.72);
+        --faint: rgba(253, 251, 247, 0.48);
+        --line: rgba(253, 251, 247, 0.14);
+        --glass: rgba(253, 251, 247, 0.08);
+        --shadow: 0 32px 84px rgba(0, 0, 0, 0.34);
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        background:
+          radial-gradient(circle at 20% 16%, rgba(184, 220, 153, 0.12), transparent 26%),
+          radial-gradient(circle at 82% 22%, rgba(255, 192, 131, 0.1), transparent 30%),
+          radial-gradient(circle at 50% 100%, rgba(176, 221, 241, 0.08), transparent 34%),
+          linear-gradient(180deg, #2a2420 0%, #342e29 48%, #4b3c35 100%);
+        color: var(--paper);
+        font-family: "ABC Arizona Sans", sans-serif;
+      }
+
+      body {
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+
+      .stage {
+        position: relative;
+        width: min(calc(100vw - 32px), 430px);
+        aspect-ratio: 9 / 16;
+        padding: 14px;
+      }
+
+      .stage::before,
+      .stage::after {
+        content: "";
+        position: absolute;
+        inset: auto;
+        width: 240px;
+        height: 240px;
+        border-radius: 50%;
+        filter: blur(70px);
+        opacity: 0.48;
+        pointer-events: none;
+      }
+
+      .stage::before {
+        top: -60px;
+        left: -40px;
+        background: rgba(184, 220, 153, 0.18);
+      }
+
+      .stage::after {
+        right: -50px;
+        bottom: -70px;
+        background: rgba(255, 192, 131, 0.16);
+      }
+
+      .reel {
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 38px;
+        border: 1px solid rgba(253, 251, 247, 0.12);
+        background: #211c19;
+        box-shadow:
+          inset 0 1px 0 rgba(253, 251, 247, 0.12),
+          inset 0 0 0 1px rgba(253, 251, 247, 0.02),
+          var(--shadow);
+        isolation: isolate;
+      }
+
+      .reel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(24, 21, 19, 0.2) 0%, rgba(24, 21, 19, 0) 20%, rgba(24, 21, 19, 0) 48%, rgba(24, 21, 19, 0.55) 100%),
+          linear-gradient(90deg, rgba(24, 21, 19, 0.08), transparent 18%, transparent 82%, rgba(24, 21, 19, 0.12));
+        z-index: 2;
+        pointer-events: none;
+      }
+
+      .reel::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          radial-gradient(rgba(253, 251, 247, 0.06) 0.7px, transparent 0.7px),
+          radial-gradient(rgba(0, 0, 0, 0.15) 0.5px, transparent 0.5px);
+        background-position: 0 0, 13px 17px;
+        background-size: 18px 18px, 23px 23px;
+        mix-blend-mode: soft-light;
+        opacity: 0.34;
+        z-index: 3;
+        pointer-events: none;
+      }
+
+      .slides {
+        position: absolute;
+        inset: 0;
+      }
+
+      .slide {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        opacity: 0;
+        transform: scale(1.06);
+        transition:
+          opacity 1.2s ease,
+          transform 7s ease;
+        background-position: center center;
+        background-size: cover;
+      }
+
+      .slide.active {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      .slide::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(29, 24, 21, 0.42) 0%, rgba(29, 24, 21, 0.08) 34%, rgba(29, 24, 21, 0.18) 56%, rgba(29, 24, 21, 0.72) 100%),
+          linear-gradient(0deg, rgba(52, 46, 41, 0.2), rgba(52, 46, 41, 0.2));
+      }
+
+      .ui {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 18px 18px 22px;
+      }
+
+      .top {
+        display: grid;
+        gap: 14px;
+      }
+
+      .progress {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 5px;
+      }
+
+      .progress span {
+        position: relative;
+        display: block;
+        height: 2px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(253, 251, 247, 0.22);
+      }
+
+      .progress span::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        transform-origin: left center;
+        transform: scaleX(0);
+        background: linear-gradient(90deg, rgba(253, 251, 247, 0.95), rgba(255, 192, 131, 0.72));
+      }
+
+      .progress span.done::after {
+        transform: scaleX(1);
+      }
+
+      .progress span.active::after {
+        animation: fill var(--duration, 5400ms) linear forwards;
+      }
+
+      .meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(52, 46, 41, 0.3);
+        backdrop-filter: blur(20px);
+      }
+
+      .brand-mark {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 35%, var(--green), var(--forest));
+        box-shadow: 0 0 0 4px rgba(184, 220, 153, 0.08);
+      }
+
+      .brand span,
+      .tagline,
+      .eyebrow,
+      .counter,
+      .cta {
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .brand span,
+      .tagline {
+        font-size: 10px;
+        color: var(--paper);
+      }
+
+      .tagline {
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        background: rgba(253, 251, 247, 0.06);
+        color: var(--muted);
+        backdrop-filter: blur(20px);
+      }
+
+      .bottom {
+        display: grid;
+        gap: 16px;
+      }
+
+      .caption {
+        width: min(100%, 320px);
+        padding: 16px 16px 14px;
+        border: 1px solid rgba(253, 251, 247, 0.12);
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(52, 46, 41, 0.16), rgba(52, 46, 41, 0.38));
+        backdrop-filter: blur(18px);
+        box-shadow: inset 0 1px 0 rgba(253, 251, 247, 0.06);
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        font-size: 9px;
+        color: var(--yellow);
+      }
+
+      .line {
+        margin: 0;
+        font-family: "ABC Arizona Flare", serif;
+        font-weight: 300;
+        font-size: clamp(1.65rem, 5vw, 2rem);
+        line-height: 0.98;
+        letter-spacing: -0.06em;
+        text-wrap: balance;
+        opacity: 0;
+        transform: translateY(10px);
+        transition:
+          opacity 700ms ease,
+          transform 700ms ease;
+      }
+
+      .line.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .line + .line {
+        margin-top: 6px;
+      }
+
+      .support-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .counter {
+        font-size: 9px;
+        color: var(--faint);
+      }
+
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 192, 131, 0.22);
+        background: rgba(255, 192, 131, 0.1);
+        color: var(--paper);
+        font-size: 10px;
+        text-decoration: none;
+        opacity: 0;
+        transform: translateY(10px);
+        transition:
+          opacity 600ms ease,
+          transform 600ms ease,
+          background-color 220ms ease,
+          border-color 220ms ease;
+        pointer-events: none;
+      }
+
+      .cta.visible {
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+      }
+
+      .cta:hover {
+        background: rgba(255, 192, 131, 0.18);
+        border-color: rgba(255, 192, 131, 0.34);
+      }
+
+      .tap-zone {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 36%;
+        z-index: 5;
+        padding: 0;
+        border: 0;
+        background: none;
+        appearance: none;
+        cursor: pointer;
+      }
+
+      .tap-zone.prev {
+        left: 0;
+      }
+
+      .tap-zone.next {
+        right: 0;
+      }
+
+      .tap-zone:focus-visible {
+        outline: 1px solid rgba(255, 192, 131, 0.5);
+        outline-offset: -18px;
+      }
+
+      @keyframes fill {
+        from {
+          transform: scaleX(0);
+        }
+
+        to {
+          transform: scaleX(1);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .slide,
+        .line,
+        .cta,
+        .progress span::after {
+          transition: none;
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <section class="reel" aria-label="Beforest premium reels mockup">
+        <div class="slides" id="slides"></div>
+
+        <div class="ui">
+          <div class="top">
+            <div class="progress" id="progress"></div>
+            <div class="meta">
+              <div class="brand">
+                <div class="brand-mark" aria-hidden="true"></div>
+                <span>Beforest</span>
+              </div>
+              <div class="tagline">The 10% Life</div>
+            </div>
+          </div>
+
+          <div class="bottom">
+            <div class="caption" aria-live="polite">
+              <p class="eyebrow" id="eyebrow"></p>
+              <p class="line" id="line-one"></p>
+              <p class="line" id="line-two"></p>
+            </div>
+
+            <div class="support-row">
+              <div class="counter" id="counter"></div>
+              <a
+                class="cta"
+                id="cta"
+                href="https://hospitality.beforest.co"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Start your trial
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <button class="tap-zone prev" id="prev" aria-label="Previous scene"></button>
+        <button class="tap-zone next" id="next" aria-label="Next scene"></button>
+      </section>
+    </main>
+
+    <script>
+      const deck = [
+        {
+          id: "01",
+          eyebrow: "Slide 01",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0209.jpg",
+          lineOne: "Full calendars do not make full lives.",
+          lineTwo: "Restoration is maintenance, not a luxury.",
+        },
+        {
+          id: "03",
+          eyebrow: "Slide 03",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0814.jpg",
+          lineOne: "You do not need escape.",
+          lineTwo: "You need protected time.",
+        },
+        {
+          id: "04",
+          eyebrow: "Slide 04",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PSX_20211216_190054.webp",
+          lineOne: "Trust should be built on land,",
+          lineTwo: "not language.",
+        },
+        {
+          id: "06",
+          eyebrow: "Slide 06",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_4.jpeg",
+          lineOne: "Beforest is where",
+          lineTwo: "recovery becomes real.",
+        },
+        {
+          id: "09",
+          eyebrow: "Slide 09",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_20.jpeg",
+          lineOne: "The cost of waiting is",
+          lineTwo: "another year unchanged.",
+        },
+        {
+          id: "10",
+          eyebrow: "Slide 10",
+          image:
+            "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/image_39.png",
+          lineOne: "Start with the",
+          lineTwo: "smallest real step.",
+          cta: true,
+        },
+      ];
+
+      const duration = 5600;
+      const slidesRoot = document.getElementById("slides");
+      const progressRoot = document.getElementById("progress");
+      const eyebrow = document.getElementById("eyebrow");
+      const lineOne = document.getElementById("line-one");
+      const lineTwo = document.getElementById("line-two");
+      const counter = document.getElementById("counter");
+      const cta = document.getElementById("cta");
+      const prev = document.getElementById("prev");
+      const next = document.getElementById("next");
+
+      const slideNodes = deck.map((item) => {
+        const node = document.createElement("article");
+        node.className = "slide";
+        node.style.backgroundImage = `url("${item.image}")`;
+        slidesRoot.appendChild(node);
+        return node;
+      });
+
+      const progressNodes = deck.map(() => {
+        const node = document.createElement("span");
+        node.style.setProperty("--duration", `${duration}ms`);
+        progressRoot.appendChild(node);
+        return node;
+      });
+
+      let activeIndex = 0;
+      let timer = null;
+
+      function restartProgress() {
+        progressNodes.forEach((node, index) => {
+          node.className = "";
+          if (index < activeIndex) {
+            node.classList.add("done");
+          } else if (index === activeIndex) {
+            node.classList.add("active");
+          }
+        });
+      }
+
+      function updateText(item) {
+        eyebrow.textContent = item.eyebrow;
+        lineOne.classList.remove("visible");
+        lineTwo.classList.remove("visible");
+        cta.classList.remove("visible");
+
+        window.setTimeout(() => {
+          lineOne.textContent = item.lineOne;
+          lineTwo.textContent = item.lineTwo;
+          lineOne.classList.add("visible");
+        }, 120);
+
+        window.setTimeout(() => {
+          lineTwo.classList.add("visible");
+          if (item.cta) {
+            cta.classList.add("visible");
+          }
+        }, 420);
+
+        counter.textContent = `${String(activeIndex + 1).padStart(2, "0")} / ${String(deck.length).padStart(2, "0")}`;
+      }
+
+      function showSlide(index, userInitiated = false) {
+        activeIndex = (index + deck.length) % deck.length;
+        slideNodes.forEach((node, nodeIndex) => {
+          node.classList.toggle("active", nodeIndex === activeIndex);
+        });
+
+        restartProgress();
+        updateText(deck[activeIndex]);
+
+        if (timer) {
+          window.clearTimeout(timer);
+        }
+
+        timer = window.setTimeout(() => {
+          showSlide(activeIndex + 1);
+        }, duration);
+
+        if (userInitiated) {
+          progressNodes[activeIndex].classList.remove("active");
+          void progressNodes[activeIndex].offsetWidth;
+          progressNodes[activeIndex].classList.add("active");
+        }
+      }
+
+      prev.addEventListener("click", () => showSlide(activeIndex - 1, true));
+      next.addEventListener("click", () => showSlide(activeIndex + 1, true));
+
+      showSlide(0);
+    </script>
+  </body>
+</html>

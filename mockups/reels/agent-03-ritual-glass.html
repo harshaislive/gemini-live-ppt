@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beforest Reels Mockup - Ritual Glass</title>
+    <style>
+      @font-face {
+        font-family: "ABC Arizona Flare";
+        src:
+          url("../../public/fonts/ABCArizonaFlare-Regular-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaFlare-Regular-Trial.woff") format("woff");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "ABC Arizona Flare";
+        src:
+          url("../../public/fonts/ABCArizonaFlare-Light-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaFlare-Light-Trial.woff") format("woff");
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: "ABC Arizona Sans";
+        src:
+          url("../../public/fonts/ABCArizonaSans-Regular-Trial.woff2") format("woff2"),
+          url("../../public/fonts/ABCArizonaSans-Regular-Trial.woff") format("woff");
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      :root {
+        --bg: #342e29;
+        --bg-deep: #4b3c35;
+        --forest: #344736;
+        --green: #b8dc99;
+        --yellow: #ffc083;
+        --blue: #b0ddf1;
+        --red: #86312b;
+        --off-white: #fdfbf7;
+        --soft-gray: #e7e4df;
+        --charcoal: #51514d;
+        --glass: rgba(253, 251, 247, 0.12);
+        --glass-strong: rgba(253, 251, 247, 0.18);
+        --border: rgba(253, 251, 247, 0.18);
+        --shadow: 0 28px 80px rgba(0, 0, 0, 0.36);
+        --glare-x: 58%;
+        --glare-y: 28%;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at top, rgba(184, 220, 153, 0.16), transparent 26%),
+          radial-gradient(circle at 82% 14%, rgba(255, 192, 131, 0.12), transparent 24%),
+          radial-gradient(circle at 18% 78%, rgba(176, 221, 241, 0.14), transparent 26%),
+          linear-gradient(180deg, #241f1b 0%, #342e29 42%, #4b3c35 100%);
+        color: var(--off-white);
+        font-family: "ABC Arizona Sans", sans-serif;
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      body::before {
+        opacity: 0.35;
+        background:
+          linear-gradient(125deg, rgba(255, 255, 255, 0.03), transparent 28%),
+          repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.02) 0,
+            rgba(255, 255, 255, 0.02) 1px,
+            transparent 1px,
+            transparent 3px
+          );
+      }
+
+      body::after {
+        opacity: 0.24;
+        filter: blur(82px);
+        background:
+          radial-gradient(circle at 24% 26%, rgba(184, 220, 153, 0.2), transparent 24%),
+          radial-gradient(circle at 70% 70%, rgba(255, 119, 74, 0.16), transparent 26%);
+      }
+
+      .stage {
+        position: relative;
+        width: min(100%, 430px);
+      }
+
+      .stage::before {
+        content: "";
+        position: absolute;
+        inset: -16px;
+        border-radius: 42px;
+        background: linear-gradient(180deg, rgba(253, 251, 247, 0.08), rgba(253, 251, 247, 0));
+        opacity: 0.4;
+        filter: blur(18px);
+      }
+
+      .reel {
+        position: relative;
+        aspect-ratio: 9 / 16;
+        overflow: hidden;
+        border-radius: 36px;
+        border: 1px solid rgba(253, 251, 247, 0.15);
+        background: #1f1a17;
+        box-shadow: var(--shadow);
+        isolation: isolate;
+      }
+
+      .frame {
+        position: absolute;
+        inset: 0;
+        padding: 18px;
+        display: grid;
+      }
+
+      .hero-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        transform: scale(1.08);
+        transform-origin: center;
+        filter: saturate(0.92) contrast(1.02) brightness(0.78);
+        animation: drift 20s ease-in-out infinite alternate;
+      }
+
+      .vignette,
+      .mist,
+      .grain,
+      .glare,
+      .glass-ribbon,
+      .glass-orb {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+      }
+
+      .vignette {
+        background:
+          linear-gradient(180deg, rgba(17, 14, 12, 0.18) 0%, rgba(17, 14, 12, 0.05) 16%, transparent 34%),
+          linear-gradient(180deg, transparent 38%, rgba(17, 14, 12, 0.18) 62%, rgba(17, 14, 12, 0.78) 100%);
+      }
+
+      .mist {
+        background:
+          radial-gradient(circle at 24% 18%, rgba(255, 192, 131, 0.18), transparent 28%),
+          radial-gradient(circle at 72% 16%, rgba(176, 221, 241, 0.16), transparent 30%),
+          radial-gradient(circle at 46% 88%, rgba(52, 71, 54, 0.42), transparent 38%);
+        mix-blend-mode: screen;
+        opacity: 0.9;
+        animation: breathe 12s ease-in-out infinite;
+      }
+
+      .grain {
+        opacity: 0.16;
+        background-image:
+          radial-gradient(rgba(253, 251, 247, 0.45) 0.6px, transparent 0.7px),
+          radial-gradient(rgba(0, 0, 0, 0.28) 0.6px, transparent 0.7px);
+        background-position: 0 0, 12px 12px;
+        background-size: 16px 16px;
+        mix-blend-mode: soft-light;
+      }
+
+      .glare {
+        background:
+          radial-gradient(
+            circle at var(--glare-x) var(--glare-y),
+            rgba(253, 251, 247, 0.3),
+            rgba(253, 251, 247, 0.08) 16%,
+            transparent 34%
+          );
+        mix-blend-mode: screen;
+        opacity: 0.8;
+        transition: background 220ms ease-out;
+      }
+
+      .glass-ribbon {
+        inset: 0 auto 0 -10%;
+        width: 52%;
+        background:
+          linear-gradient(
+            112deg,
+            rgba(253, 251, 247, 0.2) 0%,
+            rgba(253, 251, 247, 0.07) 24%,
+            rgba(176, 221, 241, 0.06) 44%,
+            rgba(253, 251, 247, 0.02) 58%,
+            transparent 74%
+          );
+        transform: skewX(-14deg);
+        opacity: 0.65;
+      }
+
+      .glass-orb {
+        inset: auto auto 17% 50%;
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        background:
+          radial-gradient(circle at 34% 30%, rgba(253, 251, 247, 0.34), transparent 22%),
+          radial-gradient(circle at 52% 52%, rgba(255, 192, 131, 0.12), transparent 58%),
+          rgba(253, 251, 247, 0.05);
+        border: 1px solid rgba(253, 251, 247, 0.12);
+        backdrop-filter: blur(18px);
+        filter: blur(0.2px);
+        transform: translateX(-50%);
+        opacity: 0.72;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.28),
+          0 18px 50px rgba(0, 0, 0, 0.18);
+      }
+
+      .glass-orb::before,
+      .glass-orb::after {
+        content: "";
+        position: absolute;
+        border-radius: inherit;
+      }
+
+      .glass-orb::before {
+        inset: 12% 14% 42% 16%;
+        background: radial-gradient(circle, rgba(253, 251, 247, 0.22), transparent 68%);
+        filter: blur(6px);
+      }
+
+      .glass-orb::after {
+        inset: auto 24% 18% 26%;
+        height: 26%;
+        background: radial-gradient(circle, rgba(52, 71, 54, 0.32), transparent 70%);
+        filter: blur(12px);
+      }
+
+      .top-bar,
+      .bottom-stack {
+        position: relative;
+        z-index: 2;
+      }
+
+      .top-bar {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 34px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(75, 60, 53, 0.54), rgba(75, 60, 53, 0.26));
+        backdrop-filter: blur(18px);
+        box-shadow: inset 0 1px 0 rgba(253, 251, 247, 0.08);
+        color: var(--soft-gray);
+        font-size: 0.72rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .chip.brand {
+        color: var(--yellow);
+      }
+
+      .chip .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 16px rgba(184, 220, 153, 0.75);
+      }
+
+      .crest {
+        position: absolute;
+        inset: 12% 18px auto auto;
+        z-index: 2;
+        width: 56px;
+        height: 56px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-family: "ABC Arizona Flare", serif;
+        font-size: 0.8rem;
+        color: rgba(253, 251, 247, 0.9);
+        background: radial-gradient(circle at 35% 35%, rgba(253, 251, 247, 0.18), rgba(75, 60, 53, 0.22));
+        border: 1px solid rgba(253, 251, 247, 0.14);
+        backdrop-filter: blur(18px);
+        box-shadow: inset 0 1px 0 rgba(253, 251, 247, 0.12);
+      }
+
+      .bottom-stack {
+        align-self: end;
+        display: grid;
+        gap: 12px;
+      }
+
+      .headline-panel,
+      .caption-panel {
+        position: relative;
+        overflow: hidden;
+        border-radius: 26px;
+        border: 1px solid rgba(253, 251, 247, 0.14);
+        background: linear-gradient(180deg, rgba(43, 37, 33, 0.54), rgba(24, 20, 18, 0.6));
+        box-shadow:
+          inset 0 1px 0 rgba(253, 251, 247, 0.08),
+          0 20px 40px rgba(0, 0, 0, 0.18);
+        backdrop-filter: blur(22px);
+      }
+
+      .headline-panel {
+        padding: 18px 18px 20px;
+      }
+
+      .headline-panel::before,
+      .caption-panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(140deg, rgba(253, 251, 247, 0.1), transparent 36%, transparent 64%, rgba(176, 221, 241, 0.08));
+        opacity: 0.7;
+        pointer-events: none;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--yellow);
+        font-size: 0.74rem;
+        letter-spacing: 0.11em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 9ch;
+        font-family: "ABC Arizona Flare", serif;
+        font-size: clamp(2.15rem, 7vw, 3rem);
+        line-height: 0.93;
+        letter-spacing: -0.08em;
+        font-weight: 300;
+        text-wrap: balance;
+      }
+
+      .support {
+        margin: 14px 0 0;
+        max-width: 28ch;
+        color: rgba(253, 251, 247, 0.76);
+        font-size: 0.98rem;
+        line-height: 1.4;
+        text-wrap: pretty;
+      }
+
+      .caption-panel {
+        padding: 14px 16px 16px;
+      }
+
+      .caption-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .caption-label {
+        color: rgba(253, 251, 247, 0.68);
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .timeline {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
+
+      .timeline span {
+        width: 18px;
+        height: 2px;
+        border-radius: 999px;
+        background: rgba(253, 251, 247, 0.18);
+        transition: transform 240ms ease, background-color 240ms ease, opacity 240ms ease;
+      }
+
+      .timeline span.active {
+        background: var(--green);
+        opacity: 1;
+        transform: scaleX(1.2);
+      }
+
+      .timeline span.done {
+        background: rgba(184, 220, 153, 0.4);
+      }
+
+      .progress-track {
+        position: relative;
+        width: 100%;
+        height: 3px;
+        border-radius: 999px;
+        overflow: hidden;
+        background: rgba(253, 251, 247, 0.12);
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 100%;
+        transform-origin: left center;
+        transform: scaleX(0);
+        background: linear-gradient(90deg, rgba(184, 220, 153, 0.28), var(--green), rgba(255, 192, 131, 0.85));
+      }
+
+      .progress-bar.animate {
+        animation: fill 4.8s linear forwards;
+      }
+
+      .caption-text {
+        margin: 14px 0 0;
+        min-height: 4.6em;
+        color: var(--off-white);
+        font-size: 1.02rem;
+        line-height: 1.5;
+        letter-spacing: -0.01em;
+        text-wrap: pretty;
+        transition: opacity 180ms ease, transform 180ms ease;
+      }
+
+      .caption-text.is-swapping {
+        opacity: 0;
+        transform: translateY(6px);
+      }
+
+      .footer-line {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .ritual {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: rgba(253, 251, 247, 0.6);
+        font-size: 0.76rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      .ritual::before {
+        content: "";
+        width: 30px;
+        height: 1px;
+        background: linear-gradient(90deg, rgba(255, 192, 131, 0.16), rgba(255, 192, 131, 0.74));
+      }
+
+      .scene-code {
+        color: rgba(253, 251, 247, 0.62);
+        font-size: 0.74rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      @keyframes drift {
+        0% {
+          transform: scale(1.08) translate3d(-1.6%, -0.8%, 0);
+        }
+        100% {
+          transform: scale(1.14) translate3d(1.6%, 1.2%, 0);
+        }
+      }
+
+      @keyframes breathe {
+        0%,
+        100% {
+          transform: scale(1) translate3d(0, 0, 0);
+          opacity: 0.82;
+        }
+        50% {
+          transform: scale(1.08) translate3d(0, -1.4%, 0);
+          opacity: 1;
+        }
+      }
+
+      @keyframes fill {
+        from {
+          transform: scaleX(0);
+        }
+        to {
+          transform: scaleX(1);
+        }
+      }
+
+      @media (max-width: 520px) {
+        body {
+          padding: 0;
+        }
+
+        .stage {
+          width: 100vw;
+        }
+
+        .reel {
+          min-height: 100vh;
+          border-radius: 0;
+          border-inline: 0;
+        }
+
+        .frame {
+          padding: 16px;
+        }
+
+        .glass-orb {
+          width: 160px;
+          height: 160px;
+          bottom: 18%;
+        }
+
+        h1 {
+          max-width: 10ch;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <article class="reel" id="reel">
+        <img
+          class="hero-image"
+          src="https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0814.jpg"
+          alt="Beforest landscape scene"
+        />
+        <div class="vignette"></div>
+        <div class="mist"></div>
+        <div class="grain"></div>
+        <div class="glare" id="glare"></div>
+        <div class="glass-ribbon"></div>
+        <div class="glass-orb" aria-hidden="true"></div>
+
+        <div class="frame">
+          <div class="top-bar">
+            <div class="chip brand"><span class="dot"></span>Beforest</div>
+            <div class="chip">The 10% Life</div>
+          </div>
+
+          <div class="crest" aria-hidden="true">03</div>
+
+          <div class="bottom-stack">
+            <section class="headline-panel">
+              <p class="eyebrow">Protected Time / Scene Study</p>
+              <h1>You do not need escape. You need protected time.</h1>
+              <p class="support">
+                Thirty nights a year is not a fantasy number. It is a practice of return.
+              </p>
+            </section>
+
+            <section class="caption-panel" aria-label="Subtitles">
+              <div class="caption-head">
+                <span class="caption-label">Narration</span>
+                <div class="timeline" id="timeline" aria-hidden="true">
+                  <span class="active"></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+              </div>
+
+              <div class="progress-track" aria-hidden="true">
+                <div class="progress-bar animate" id="progressBar"></div>
+              </div>
+
+              <p class="caption-text" id="captionText">
+                Protected time only works when the ground beneath it is steady.
+              </p>
+
+              <div class="footer-line">
+                <span class="ritual">Ritual, not retreat</span>
+                <span class="scene-code">09:16 mockup</span>
+              </div>
+            </section>
+          </div>
+        </div>
+      </article>
+    </main>
+
+    <script>
+      const captions = [
+        "Protected time only works when the ground beneath it is steady.",
+        "Thirty nights a year is not a fantasy number.",
+        "It is enough to interrupt the long drift of fatigue.",
+        "You are trying to build a rhythm that keeps returning you to yourself.",
+        "The point is repeated contact with quiet, with sleep, with a different pace of attention."
+      ];
+
+      const captionText = document.getElementById("captionText");
+      const progressBar = document.getElementById("progressBar");
+      const timelineItems = Array.from(document.querySelectorAll("#timeline span"));
+      const reel = document.getElementById("reel");
+      const glare = document.getElementById("glare");
+      const stepDuration = 4800;
+      let index = 0;
+
+      function renderCaption(nextIndex) {
+        captionText.classList.add("is-swapping");
+
+        window.setTimeout(() => {
+          captionText.textContent = captions[nextIndex];
+          captionText.classList.remove("is-swapping");
+        }, 180);
+
+        timelineItems.forEach((item, itemIndex) => {
+          item.classList.toggle("active", itemIndex === nextIndex);
+          item.classList.toggle("done", itemIndex < nextIndex);
+        });
+
+        progressBar.classList.remove("animate");
+        void progressBar.offsetWidth;
+        progressBar.classList.add("animate");
+      }
+
+      window.setInterval(() => {
+        index = (index + 1) % captions.length;
+        renderCaption(index);
+      }, stepDuration);
+
+      reel.addEventListener("pointermove", (event) => {
+        const bounds = reel.getBoundingClientRect();
+        const x = ((event.clientX - bounds.left) / bounds.width) * 100;
+        const y = ((event.clientY - bounds.top) / bounds.height) * 100;
+        glare.style.setProperty("--glare-x", x.toFixed(1) + "%");
+        glare.style.setProperty("--glare-y", y.toFixed(1) + "%");
+      });
+
+      reel.addEventListener("pointerleave", () => {
+        glare.style.setProperty("--glare-x", "58%");
+        glare.style.setProperty("--glare-y", "28%");
+      });
+    </script>
+  </body>
+</html>

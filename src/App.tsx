@@ -89,6 +89,68 @@ function buildSubtitleWindow(transcriptSegments: TranscriptSegment[]) {
   return windowSegments.join(' ').trim();
 }
 
+function buildTopicSequence(slide: PresentationSlide | null) {
+  if (!slide) {
+    return ['Guided conversation'];
+  }
+
+  const content = `${slide.title} ${slide.note} ${slide.script}`.toLowerCase();
+  const topics: string[] = [];
+
+  if (slide.kind === 'cta') {
+    return ['Try it first', 'Your next step'];
+  }
+
+  if (slide.kind === 'quote') {
+    if (content.includes('feet')) {
+      return ['A different test'];
+    }
+    return ['A quiet pause'];
+  }
+
+  if (slide.kind === 'derived') {
+    return ['Going deeper'];
+  }
+
+  if (
+    /overcapacity|erosion|fatigue|recovery|restoration|protected time|reset|rest is|rhythm/.test(
+      content,
+    )
+  ) {
+    topics.push('Why this matters');
+  }
+
+  if (/protected time|practice of return|returning|recurring return|rhythm/.test(content)) {
+    topics.push('A better rhythm');
+  }
+
+  if (/trust|evidence|years|families|acres|stewardship|proof/.test(content)) {
+    topics.push('Why trust it');
+  }
+
+  if (/coorg|hyderabad|bhopal|mumbai|belonging|landscape|place to stand/.test(content)) {
+    topics.push('Places to return');
+  }
+
+  if (/access|ownership|person-nights|ten years|structure|model/.test(content)) {
+    topics.push('How it works');
+  }
+
+  if (/waiting|cost|delay|unchanged/.test(content)) {
+    topics.push('Why now');
+  }
+
+  if (/trial|pilot|smallest real step|experience before commitment/.test(content)) {
+    topics.push('Try it first');
+  }
+
+  if (topics.length === 0) {
+    topics.push(slide.note.split('.').at(0)?.trim() || slide.title);
+  }
+
+  return [...new Set(topics)].slice(0, 2);
+}
+
 function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [connectionError, setConnectionError] = useState('');
@@ -113,6 +175,7 @@ function App() {
   const [uiError, setUiError] = useState('');
   const [isStarting, setIsStarting] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [topicIndex, setTopicIndex] = useState(0);
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
@@ -134,6 +197,7 @@ function App() {
   const introTimeoutRef = useRef<number | null>(null);
   const subtitleTimeoutRef = useRef<number | null>(null);
   const lastSubtitleTextRef = useRef('');
+  const topicTimeoutRef = useRef<number | null>(null);
 
   const isMobile = useMemo(() => window.matchMedia('(pointer: coarse)').matches, []);
   const currentSlide = slides[currentSlideIndex] ?? null;
@@ -157,7 +221,7 @@ function App() {
   const overallProgressPercent = slides.length
     ? ((currentSlideIndex + (isActivated ? 1 : 0)) / slides.length) * 100
     : 0;
-  const STORY_DURATION_MS = 5600;
+  const STORY_DURATION_MS = 14000;
   const [storyElapsedMs, setStoryElapsedMs] = useState(0);
   const activeStoryIndex = storyImages.length
     ? Math.floor(storyElapsedMs / STORY_DURATION_MS) % storyImages.length
@@ -165,6 +229,8 @@ function App() {
   const activeStoryProgressPercent = storyImages.length
     ? ((storyElapsedMs % STORY_DURATION_MS) / STORY_DURATION_MS) * 100
     : 0;
+  const topicSequence = useMemo(() => buildTopicSequence(currentSlide), [currentSlide]);
+  const activeTopic = topicSequence[Math.min(topicIndex, topicSequence.length - 1)] ?? '';
 
   useEffect(() => {
     slidesRef.current = slides;
@@ -268,18 +334,29 @@ function App() {
       return;
     }
 
-    lastSubtitleTextRef.current = nextSubtitle;
-    setIsSubtitleVisible(false);
-
     if (subtitleTimeoutRef.current !== null) {
       window.clearTimeout(subtitleTimeoutRef.current);
       subtitleTimeoutRef.current = null;
     }
 
-    subtitleTimeoutRef.current = window.setTimeout(() => {
-      setDisplaySubtitle(nextSubtitle);
-      setIsSubtitleVisible(Boolean(nextSubtitle));
-    }, 120);
+    lastSubtitleTextRef.current = nextSubtitle;
+
+    if (!nextSubtitle) {
+      setDisplaySubtitle('');
+      setIsSubtitleVisible(false);
+      return;
+    }
+
+    const shouldAnimateIn = !displaySubtitle;
+    subtitleTimeoutRef.current = window.setTimeout(
+      () => {
+        setDisplaySubtitle(nextSubtitle);
+        if (shouldAnimateIn) {
+          setIsSubtitleVisible(true);
+        }
+      },
+      shouldAnimateIn ? 120 : 320,
+    );
 
     return () => {
       if (subtitleTimeoutRef.current !== null) {
@@ -287,7 +364,31 @@ function App() {
         subtitleTimeoutRef.current = null;
       }
     };
-  }, [isActivated, isRecording, liveTranscript, transcriptSegments]);
+  }, [displaySubtitle, isActivated, isRecording, liveTranscript, transcriptSegments]);
+
+  useEffect(() => {
+    if (topicTimeoutRef.current !== null) {
+      window.clearTimeout(topicTimeoutRef.current);
+      topicTimeoutRef.current = null;
+    }
+
+    setTopicIndex(0);
+
+    if (!isActivated || topicSequence.length < 2) {
+      return;
+    }
+
+    topicTimeoutRef.current = window.setTimeout(() => {
+      setTopicIndex(1);
+    }, 18000);
+
+    return () => {
+      if (topicTimeoutRef.current !== null) {
+        window.clearTimeout(topicTimeoutRef.current);
+        topicTimeoutRef.current = null;
+      }
+    };
+  }, [currentSlide?.id, isActivated, topicSequence.length]);
 
   function clearTranscriptQueue() {
     for (const timeoutId of transcriptTimeoutsRef.current) {
@@ -618,18 +719,18 @@ function App() {
   }, [connectionState, currentSlide, currentSlideIndex, isActivated]);
 
   function buildNarrationPrompt(slide: PresentationSlide, slideIndex: number, totalSlides: number) {
-    const position = `You are guiding slide ${slideIndex + 1} of ${totalSlides}.`;
-    const scene = `Current slide title: "${slide.title}". Slide note: "${slide.note}". Approved spoken context: "${slide.script}".`;
+    const position = `Internal context: scene ${slideIndex + 1} of ${totalSlides}.`;
+    const scene = `Internal reference only. Title: "${slide.title}". Note: "${slide.note}". Approved spoken context: "${slide.script}".`;
     const openingFramework =
       slideIndex === 0
-        ? 'This is the opening of the experience. Open like a thoughtful person speaking one-to-one, not like a brand film or brochure. In the first few lines, answer three plain questions in natural spoken language: what Beforest is, why it matters, and where this walkthrough is going. Use short, everyday sentences. Translate abstract ideas into concrete language people can picture easily. Do not sound poetic, lofty, mysterious, or overly polished. Do not explain controls, clicking, microphones, or app behavior unless the listener asks. After that orientation, move naturally into the first slide.'
+        ? 'This is the opening of the experience. Speak like you are on a calm one-to-one call with someone intelligent who is hearing about this for the first time. In the first few lines, answer three plain questions in natural spoken language: what Beforest is, why it matters, and where this walkthrough is going. Use short, everyday sentences. Translate abstract ideas into concrete language people can picture easily. Do not sound poetic, lofty, mysterious, or overly polished. Do not explain controls, clicking, microphones, or app behavior unless the listener asks. After that orientation, move naturally into the substance.'
         : '';
     const close =
       slide.kind === 'cta'
         ? 'Close with conviction, invite them to take the trial stay at hospitality.beforest.co, and end with: You decide with your feet, not your eyes. See you in the slow lane.'
         : 'Close naturally. If it fits, leave a brief opening for questions, but do not turn it into interface guidance.';
 
-    return `${position} ${scene} Narrate this scene now in about 20 to 30 seconds. Speak like a human guide, not a brochure. ${openingFramework} ${close}`;
+    return `${position} ${scene} Speak for about 20 to 30 seconds. This is for internal guidance only: never say slide, scene, presentation, or "in this part". Never describe what is on the slide. Never say "this slide is about" or anything similar. Speak like a human guide on a thoughtful call, not a brochure or voice-over. ${openingFramework} ${close}`;
   }
 
   function sendTextTurn(text: string, kind: TurnKind) {
@@ -1123,6 +1224,10 @@ function App() {
                 ))}
           </div>
 
+          <div className="topic-heading" aria-live="polite">
+            <span>{activeTopic}</span>
+          </div>
+
           <div className={`intro-card${isIntroVisible ? '' : ' hidden'}`}>
             <p className="intro-label">{presentationTitle}</p>
             <h1>{currentSlide?.title ?? 'Loading presentation...'}</h1>
@@ -1191,9 +1296,10 @@ function App() {
                 <ArrowUpRight size={14} />
               </a>
             ) : null}
-            <div className="bottom-progress" aria-hidden="true">
-              <span style={{ width: `${overallProgressPercent}%` }} />
-            </div>
+          </div>
+
+          <div className="bottom-progress" aria-hidden="true">
+            <span style={{ width: `${overallProgressPercent}%` }} />
           </div>
 
           {connectionState === 'error' || uiError ? (

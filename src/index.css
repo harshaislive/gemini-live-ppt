@@ -556,6 +556,113 @@ select {
   transform: translateY(-1px);
 }
 
+.help-button {
+  position: absolute;
+  right: 14px;
+  bottom: 44px;
+  z-index: 7;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(253, 251, 247, 0.12);
+  border-radius: 999px;
+  background: rgba(12, 11, 10, 0.12);
+  color: rgba(253, 251, 247, 0.74);
+  backdrop-filter: blur(12px);
+}
+
+.help-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(12, 11, 10, 0.34);
+  backdrop-filter: blur(8px);
+}
+
+.help-modal {
+  position: relative;
+  width: min(100%, 328px);
+  display: grid;
+  gap: 12px;
+  padding: 18px 18px 16px;
+  border: 1px solid rgba(253, 251, 247, 0.12);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(37, 32, 28, 0.96), rgba(25, 22, 19, 0.94));
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.3);
+}
+
+.help-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(253, 251, 247, 0.1);
+  border-radius: 999px;
+  background: rgba(253, 251, 247, 0.04);
+  color: var(--paper-soft);
+}
+
+.help-kicker {
+  margin: 0;
+  color: var(--yellow);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.help-modal h2 {
+  margin: 0;
+  font-family: 'ABC Arizona Flare', Georgia, serif;
+  font-size: 1.8rem;
+  font-weight: 300;
+  line-height: 0.94;
+  letter-spacing: -0.06em;
+}
+
+.help-copy {
+  margin: 0;
+  color: var(--paper-soft);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.help-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.help-grid div {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(253, 251, 247, 0.08);
+  border-radius: 16px;
+  background: rgba(253, 251, 247, 0.03);
+}
+
+.help-grid strong {
+  color: var(--paper);
+  font-size: 0.74rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.help-grid span {
+  color: var(--paper-soft);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
 .screen-frame {
   position: absolute;
   inset: 8px;
@@ -619,6 +726,11 @@ select {
 
   .begin-control {
     bottom: 52px;
+  }
+
+  .help-button {
+    right: 12px;
+    bottom: 40px;
   }
 
   .screen-frame {

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from '@google/genai';
-import { ArrowUpRight, Microphone } from '@phosphor-icons/react';
+import { ArrowUpRight, Microphone, Question, X } from '@phosphor-icons/react';
 import {
   createPcmPlayer,
   createPcmRecorder,
@@ -87,6 +87,7 @@ function App() {
   const [isSubtitleVisible, setIsSubtitleVisible] = useState(false);
   const [uiError, setUiError] = useState('');
   const [isStarting, setIsStarting] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderHandle | null>(null);
@@ -601,14 +602,14 @@ function App() {
     const scene = `Current slide title: "${slide.title}". Slide note: "${slide.note}". Approved spoken context: "${slide.script}".`;
     const openingFramework =
       slideIndex === 0
-        ? 'This is the opening of the experience. Start with orientation before emotion. In a clear human way, explain: what Beforest is, why this presentation matters, where this story is going, and how the listener can interact. Sound like one thoughtful person speaking directly to another. Be concrete, grounded, and easy to follow. Keep abstract language low. After that orientation, move naturally into the first slide.'
+        ? 'This is the opening of the experience. Start with orientation before emotion. In a clear human way, explain: what Beforest is, why this presentation matters, and where this story is going. Sound like one thoughtful person speaking directly to another. Be concrete, grounded, and easy to follow. Keep abstract language low. After that orientation, move naturally into the first slide.'
         : '';
     const close =
       slide.kind === 'cta'
         ? 'Close with conviction, invite them to take the trial stay at hospitality.beforest.co, and end with: You decide with your feet, not your eyes. See you in the slow lane.'
         : slideIndex === 0
-          ? 'Toward the end, mention naturally that once the presentation begins it will keep moving on its own. Tell them that on desktop they can hold space to ask and release to send, and on mobile they can hold the mic and release.'
-          : 'Toward the end, ask if they have any questions. Tell them naturally that on desktop they can hold space to ask and release to send, and on mobile they can hold the mic and release. Mention that otherwise you will keep moving.';
+          ? 'Toward the end, mention naturally that the presentation will keep moving on its own.'
+          : 'Toward the end, ask if they have any questions and mention that otherwise you will keep moving.';
 
     return `${position} ${scene} Narrate this scene now in about 20 to 30 seconds. Speak like a human guide, not a brochure. ${openingFramework} ${close}`;
   }
@@ -700,15 +701,15 @@ function App() {
       }
 
       if (route.action === 'stay') {
-        setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
+        setLiveTranscript('Question answered. Staying on this slide.');
         return;
       }
     } catch {
-      setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
+      setLiveTranscript('Question answered. Staying on this slide.');
       return;
     }
 
-    setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
+    setLiveTranscript('Question answered. Staying on this slide.');
   }
 
   function handleTurnComplete() {
@@ -730,7 +731,7 @@ function App() {
         return;
       }
       if (!shouldRouteQuestion(question)) {
-        setLiveTranscript('Question answered. Staying on this slide. Hold space on desktop or hold the mic on mobile to ask more.');
+        setLiveTranscript('Question answered. Staying on this slide.');
         return;
       }
       void applyQuestionRouting(question);
@@ -1194,6 +1195,60 @@ function App() {
                 <span>{isStarting ? 'Starting...' : 'Begin'}</span>
                 <ArrowUpRight size={16} />
               </button>
+            </div>
+          ) : null}
+
+          <button
+            type="button"
+            className="help-button"
+            aria-label="Open presentation help"
+            onClick={() => setIsHelpOpen(true)}
+          >
+            <Question size={16} weight="bold" />
+          </button>
+
+          {isHelpOpen ? (
+            <div className="help-modal-backdrop" role="presentation" onClick={() => setIsHelpOpen(false)}>
+              <section
+                className="help-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="help-title"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="help-close"
+                  aria-label="Close help"
+                  onClick={() => setIsHelpOpen(false)}
+                >
+                  <X size={16} weight="bold" />
+                </button>
+                <p className="help-kicker">Before You Begin</p>
+                <h2 id="help-title">What to expect</h2>
+                <p className="help-copy">
+                  This is a guided Beforest presentation with live narration. It will move scene by
+                  scene on its own, and you can interrupt with a question whenever you want.
+                </p>
+                <div className="help-grid">
+                  <div>
+                    <strong>Runtime</strong>
+                    <span>Roughly 4 to 6 minutes, depending on questions.</span>
+                  </div>
+                  <div>
+                    <strong>Ask Questions</strong>
+                    <span>Press and hold the mic while speaking, then release.</span>
+                  </div>
+                  <div>
+                    <strong>Voice</strong>
+                    <span>Use the voice control near the top if you want a different narrator.</span>
+                  </div>
+                  <div>
+                    <strong>Ending</strong>
+                    <span>The final scene offers the trial stay when the story reaches that point.</span>
+                  </div>
+                </div>
+              </section>
             </div>
           ) : null}
 

@@ -652,12 +652,7 @@ function App() {
       return;
     }
 
-    if (hasNarratedSlideRef.current === currentSlideIndex) {
-      return;
-    }
-
-    hasNarratedSlideRef.current = currentSlideIndex;
-    narrateSlide(currentSlideIndex);
+    kickoffCurrentSlideNarration();
   }, [connectionState, currentSlide, currentSlideIndex, isActivated]);
 
   function buildNarrationPrompt(slide: PresentationSlide, slideIndex: number, totalSlides: number) {
@@ -910,16 +905,38 @@ function App() {
     }
   }
 
-  async function unlockAudioPlayback() {
+  async function unlockAudioPlayback(options?: { required?: boolean }) {
     if (!playerRef.current) {
       playerRef.current = createPcmPlayer();
     }
 
     try {
       await playerRef.current.prepare();
-    } catch {
-      // Keep the presentation usable even if the browser rejects the warm-up attempt.
+      return true;
+    } catch (error) {
+      if (options?.required) {
+        throw error;
+      }
+
+      return false;
     }
+  }
+
+  function kickoffCurrentSlideNarration(options?: { force?: boolean }) {
+    const slideIndex = currentSlideIndexRef.current;
+    const slide = slidesRef.current[slideIndex];
+
+    if (!sessionRef.current || connectionState !== 'ready' || !isActivatedRef.current || !slide) {
+      return false;
+    }
+
+    if (!options?.force && hasNarratedSlideRef.current === slideIndex) {
+      return false;
+    }
+
+    hasNarratedSlideRef.current = slideIndex;
+    narrateSlide(slideIndex);
+    return true;
   }
 
   async function activatePresentation() {
@@ -927,7 +944,8 @@ function App() {
       return;
     }
 
-    await unlockAudioPlayback();
+    await unlockAudioPlayback({ required: true });
+    isActivatedRef.current = true;
     setIsActivated(true);
     hasNarratedSlideRef.current = null;
   }
@@ -941,7 +959,7 @@ function App() {
     if (!isActivatedRef.current) {
       return;
     } else {
-      await unlockAudioPlayback();
+      await unlockAudioPlayback({ required: true });
     }
 
     clearAutoAdvance();
@@ -1137,6 +1155,7 @@ function App() {
 
     try {
       await activatePresentation();
+      kickoffCurrentSlideNarration({ force: true });
     } catch (error) {
       setUiError(
         error instanceof Error ? error.message : 'Unable to begin the presentation.',

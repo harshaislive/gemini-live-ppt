@@ -64,6 +64,31 @@ function getOptimizedImageUrl(
   return url.toString();
 }
 
+function buildSubtitleWindow(transcriptSegments: TranscriptSegment[]) {
+  const windowSegments: string[] = [];
+  let charCount = 0;
+
+  for (let index = transcriptSegments.length - 1; index >= 0; index -= 1) {
+    const text = transcriptSegments[index]?.text.trim();
+    if (!text) {
+      continue;
+    }
+
+    windowSegments.unshift(text);
+    charCount += text.length + 1;
+
+    if (charCount >= 150 && /[.!?]["']?$/.test(text)) {
+      break;
+    }
+
+    if (charCount >= 210) {
+      break;
+    }
+  }
+
+  return windowSegments.join(' ').trim();
+}
+
 function App() {
   const [connectionState, setConnectionState] = useState<ConnectionState>('connecting');
   const [connectionError, setConnectionError] = useState('');
@@ -223,12 +248,7 @@ function App() {
   }, [currentSlide?.id]);
 
   useEffect(() => {
-    const latestTranscriptText = transcriptSegments
-      .slice(-4)
-      .map((segment) => segment.text.trim())
-      .filter(Boolean)
-      .join(' ')
-      .trim();
+    const latestTranscriptText = buildSubtitleWindow(transcriptSegments);
     let nextSubtitle = '';
 
     if (latestTranscriptText) {
@@ -602,14 +622,12 @@ function App() {
     const scene = `Current slide title: "${slide.title}". Slide note: "${slide.note}". Approved spoken context: "${slide.script}".`;
     const openingFramework =
       slideIndex === 0
-        ? 'This is the opening of the experience. Start with orientation before emotion. In a clear human way, explain: what Beforest is, why this presentation matters, and where this story is going. Sound like one thoughtful person speaking directly to another. Be concrete, grounded, and easy to follow. Keep abstract language low. After that orientation, move naturally into the first slide.'
+        ? 'This is the opening of the experience. Open like a thoughtful person speaking one-to-one, not like a brand film or brochure. In the first few lines, answer three plain questions in natural spoken language: what Beforest is, why it matters, and where this walkthrough is going. Use short, everyday sentences. Translate abstract ideas into concrete language people can picture easily. Do not sound poetic, lofty, mysterious, or overly polished. Do not explain controls, clicking, microphones, or app behavior unless the listener asks. After that orientation, move naturally into the first slide.'
         : '';
     const close =
       slide.kind === 'cta'
         ? 'Close with conviction, invite them to take the trial stay at hospitality.beforest.co, and end with: You decide with your feet, not your eyes. See you in the slow lane.'
-        : slideIndex === 0
-          ? 'Toward the end, mention naturally that the presentation will keep moving on its own.'
-          : 'Toward the end, ask if they have any questions and mention that otherwise you will keep moving.';
+        : 'Close naturally. If it fits, leave a brief opening for questions, but do not turn it into interface guidance.';
 
     return `${position} ${scene} Narrate this scene now in about 20 to 30 seconds. Speak like a human guide, not a brochure. ${openingFramework} ${close}`;
   }
@@ -1136,24 +1154,24 @@ function App() {
             </select>
           </div>
 
-          <div className="mic-stage">
-            <button
-              type="button"
-              className={`center-mic${isRecording ? ' active' : ''}`}
-              aria-label={
-                isRecording
-                    ? 'Release to ask a question'
-                    : 'Hold to ask a question'
-              }
-              onClick={handleMicClick}
-              onPointerDown={handleMicPointerDown}
-              onPointerUp={handleMicPointerUp}
-              onPointerCancel={handleMicPointerCancel}
-              disabled={!isActivated || connectionState !== 'ready' || isSwitchingVoice}
-            >
-              <Microphone size={24} weight="fill" />
-            </button>
-          </div>
+          {isActivated ? (
+            <div className="mic-stage">
+              <button
+                type="button"
+                className={`center-mic${isRecording ? ' active' : ''}`}
+                aria-label={
+                  isRecording ? 'Release to ask a question' : 'Hold to ask a question'
+                }
+                onClick={handleMicClick}
+                onPointerDown={handleMicPointerDown}
+                onPointerUp={handleMicPointerUp}
+                onPointerCancel={handleMicPointerCancel}
+                disabled={connectionState !== 'ready' || isSwitchingVoice}
+              >
+                <Microphone size={24} weight="fill" />
+              </button>
+            </div>
+          ) : null}
 
           <div className="subtitle-rail">
             <p

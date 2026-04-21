@@ -21,6 +21,7 @@ type LiveTurnState =
   | 'error';
 type LiveSessionEventType =
   | 'session_opened'
+  | 'setup_complete'
   | 'session_error'
   | 'session_closed'
   | 'begin_clicked'
@@ -39,7 +40,8 @@ type LiveSessionEventType =
   | 'recording_stopped'
   | 'interrupted'
   | 'slide_advanced'
-  | 'voice_changed';
+  | 'voice_changed'
+  | 'go_away';
 
 interface PresentationSlide {
   id: string;
@@ -715,10 +717,9 @@ function App() {
       },
       callbacks: {
         onopen: () => {
-          setConnectionState('ready');
+          setConnectionState('connecting');
           setIsSwitchingVoice(false);
-          setLiveTurnStateValue('idle');
-          logLiveEvent('session_opened', `Live session ready with ${voiceName}.`);
+          logLiveEvent('session_opened', `WebSocket opened with ${voiceName}; waiting for setupComplete.`);
         },
         onmessage: (message: LiveServerMessage) => {
           handleMessage(message);
@@ -1093,6 +1094,17 @@ function App() {
   }
 
   function handleMessage(message: LiveServerMessage) {
+    if (message.setupComplete) {
+      setConnectionState('ready');
+      setIsSwitchingVoice(false);
+      setLiveTurnStateValue('idle');
+      logLiveEvent('setup_complete', 'Live session setup complete.');
+    }
+
+    if (message.goAway) {
+      logLiveEvent('go_away', `Server requested disconnect soon. Time left: ${message.goAway.timeLeft ?? 'unknown'}.`);
+    }
+
     const serverContent = message.serverContent;
     const parts = serverContent?.modelTurn?.parts ?? [];
 

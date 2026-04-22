@@ -403,11 +403,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsAwaitingReply(false);
 
     try {
-      await callAgentRpc("beforest.prepare_user_turn", {
-        source: "tap_to_speak",
-      });
       await room.localParticipant.setMicrophoneEnabled(true);
       setIsMicOpen(true);
+
+      void callAgentRpc("beforest.prepare_user_turn", {
+        source: "tap_to_speak",
+      }).catch((error) => {
+        console.warn("prepare_user_turn rpc failed", error);
+      });
     } catch (error) {
       setIsMicOpen(false);
       setUiError(
@@ -427,13 +430,19 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     try {
       await room.localParticipant.setMicrophoneEnabled(false);
-      const payload = await callAgentRpc("beforest.commit_user_turn", {
-        source: "tap_to_speak",
-      });
-      const result = JSON.parse(payload) as { transcriptPresent?: boolean };
-      if (!result.transcriptPresent) {
+      try {
+        const payload = await callAgentRpc("beforest.commit_user_turn", {
+          source: "tap_to_speak",
+        });
+        const result = JSON.parse(payload) as { transcriptPresent?: boolean };
+        if (!result.transcriptPresent) {
+          setIsAwaitingReply(false);
+          setDidMissUserTurn(true);
+        }
+      } catch (rpcError) {
+        console.warn("commit_user_turn rpc failed", rpcError);
         setIsAwaitingReply(false);
-        setDidMissUserTurn(true);
+        setDidMissUserTurn(false);
       }
     } catch (error) {
       setIsAwaitingReply(false);

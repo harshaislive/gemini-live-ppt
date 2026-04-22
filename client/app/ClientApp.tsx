@@ -7,6 +7,7 @@ import {
   ConnectionState,
   RoomEvent,
   RpcInvocationData,
+  Room,
   TokenSource,
   type Participant,
   type TranscriptionSegment,
@@ -104,6 +105,11 @@ function getMicCapabilityError() {
   }
 
   return null;
+}
+
+function getAgentIdentity(room: Room) {
+  const remoteParticipant = Array.from(room.remoteParticipants.values())[0];
+  return remoteParticipant?.identity ?? null;
 }
 
 export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
@@ -290,6 +296,23 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     };
   }, [room]);
 
+  const callAgentRpc = useCallback(
+    async (method: string, payload: Record<string, unknown> = {}) => {
+      const agentIdentity = getAgentIdentity(room);
+      if (!agentIdentity) {
+        throw new Error("The live guide is not connected yet. Please wait a moment and try again.");
+      }
+
+      await room.localParticipant.performRpc({
+        destinationIdentity: agentIdentity,
+        method,
+        payload: JSON.stringify(payload),
+        responseTimeout: 5000,
+      });
+    },
+    [room],
+  );
+
   useEffect(() => {
     if (!isLive || isMicOpen) {
       return;
@@ -339,6 +362,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setUserTranscript("");
 
     try {
+      await callAgentRpc("beforest.prepare_user_turn", {
+        source: "tap_to_speak",
+      });
       await room.localParticipant.setMicrophoneEnabled(true);
       setIsMicOpen(true);
     } catch (error) {
@@ -358,6 +384,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     try {
       await room.localParticipant.setMicrophoneEnabled(false);
+      await callAgentRpc("beforest.commit_user_turn", {
+        source: "tap_to_speak",
+      });
     } catch (error) {
       setUiError(
         error instanceof Error

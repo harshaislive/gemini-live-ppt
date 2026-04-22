@@ -162,6 +162,11 @@ async def beforest_live(ctx: agents.JobContext):
     pending_scene_task: asyncio.Task | None = None
     current_scene_handle = None
 
+    def mark_user_turn_pending() -> None:
+        runtime_state["awaiting_user_answer"] = True
+        if runtime_state["scene_index"] >= 0:
+            runtime_state["resume_scene_index"] = runtime_state["scene_index"]
+
     def cancel_pending_scene() -> None:
         nonlocal pending_scene_task
         if pending_scene_task and not pending_scene_task.done():
@@ -234,9 +239,7 @@ async def beforest_live(ctx: agents.JobContext):
         )
 
         cancel_pending_scene()
-        runtime_state["awaiting_user_answer"] = True
-        if runtime_state["scene_index"] >= 0:
-            runtime_state["resume_scene_index"] = runtime_state["scene_index"]
+        mark_user_turn_pending()
 
     def on_user_state_changed(ev: UserStateChangedEvent) -> None:
         if ev.new_state != "speaking":
@@ -249,12 +252,36 @@ async def beforest_live(ctx: agents.JobContext):
         )
 
         cancel_pending_scene()
-        runtime_state["awaiting_user_answer"] = True
-        if runtime_state["scene_index"] >= 0:
-            runtime_state["resume_scene_index"] = runtime_state["scene_index"]
+        mark_user_turn_pending()
 
         if runtime_state.get("turn_kind") == "scene":
             session.interrupt()
+
+    @ctx.room.local_participant.register_rpc_method("beforest.prepare_user_turn")
+    async def prepare_user_turn(data) -> str:
+        logger.info(
+            "prepare_user_turn rpc scene_index=%s turn_kind=%s caller=%s",
+            runtime_state["scene_index"],
+            runtime_state["turn_kind"],
+            data.caller_identity,
+        )
+        cancel_pending_scene()
+        mark_user_turn_pending()
+        if runtime_state.get("turn_kind") == "scene":
+            await session.interrupt()
+        return json.dumps({"status": "ok"})
+
+    @ctx.room.local_participant.register_rpc_method("beforest.commit_user_turn")
+    async def commit_user_turn(data) -> str:
+        logger.info(
+            "commit_user_turn rpc scene_index=%s turn_kind=%s caller=%s",
+            runtime_state["scene_index"],
+            runtime_state["turn_kind"],
+            data.caller_identity,
+        )
+        mark_user_turn_pending()
+        await session.commit_user_turn()
+        return json.dumps({"status": "ok"})
 
     def on_agent_state_changed(ev: AgentStateChangedEvent) -> None:
         if runtime_state["awaiting_user_answer"] and ev.new_state in {"thinking", "speaking"}:

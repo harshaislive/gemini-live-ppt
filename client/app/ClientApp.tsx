@@ -30,6 +30,8 @@ type AccessState = {
   authorized: boolean;
 };
 
+const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
+
 function toWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean);
 }
@@ -129,6 +131,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [uiError, setUiError] = useState<string | null>(null);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim());
+  const shouldShowNameForm = Boolean(accessState && !listenerName.trim());
+  const shouldShowAccessForm = Boolean(accessState && (!accessState.authorized || shouldShowNameForm));
 
   const isLive = session.connectionState === ConnectionState.Connected;
   const isBusy = session.connectionState === ConnectionState.Connecting || isStarting;
@@ -138,14 +142,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return "Preparing the presentation...";
     }
 
-    if (!accessState.authorized) {
+    if (shouldShowAccessForm) {
       return accessState.requiresPasscode
         ? "Enter your name and passcode to open the presentation."
         : "Enter your name to open the presentation.";
-    }
-
-    if (!listenerName.trim()) {
-      return "Enter your name to begin.";
     }
 
     if (isMicOpen) {
@@ -177,7 +177,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     return "Tap the mic to begin the live walkthrough.";
-  }, [accessState, botTtsTranscript, hasEverConnected, isBusy, isLive, isMicOpen, isUserSpeaking, listenerName, uiError, userTranscript]);
+  }, [accessState, botTtsTranscript, hasEverConnected, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
 
   useEffect(() => {
     let cancelled = false;
@@ -196,6 +196,31 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY)?.trim();
+    if (storedName) {
+      setListenerName(storedName);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const trimmedName = listenerName.trim();
+    if (!trimmedName) {
+      window.localStorage.removeItem(LISTENER_NAME_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(LISTENER_NAME_STORAGE_KEY, trimmedName);
+  }, [listenerName]);
 
   const handleShowImageRpc = useCallback(
     async (data: RpcInvocationData) => {
@@ -303,6 +328,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   async function handleAccessSubmit() {
     if (!listenerName.trim()) {
       setUiError("Please enter your name before you begin.");
+      return;
+    }
+
+    if (accessState?.authorized) {
+      setUiError(null);
       return;
     }
 
@@ -464,7 +494,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                 {micHint}
               </p>
 
-              {!accessState?.authorized ? (
+              {shouldShowAccessForm ? (
                 <div className="beforest-access-card">
                   <input
                     className="beforest-access-input"

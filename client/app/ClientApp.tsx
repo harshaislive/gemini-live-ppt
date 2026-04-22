@@ -130,6 +130,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [isMicTransitioning, setIsMicTransitioning] = useState(false);
   const [isAwaitingReply, setIsAwaitingReply] = useState(false);
   const [didMissUserTurn, setDidMissUserTurn] = useState(false);
+  const [agentIdentity, setAgentIdentity] = useState<string | null>(null);
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -146,6 +147,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const isLive = session.connectionState === ConnectionState.Connected;
   const isBusy = session.connectionState === ConnectionState.Connecting || isStarting;
   const isMicBusy = isMicTransitioning;
+  const isAgentReady = Boolean(agentIdentity);
 
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
@@ -166,6 +168,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     if (isAwaitingReply) {
       return "Answering your question...";
+    }
+
+    if (isLive && !isAgentReady) {
+      return "The live guide is joining. One moment...";
     }
 
     if (didMissUserTurn) {
@@ -197,7 +203,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     return "Tap the mic to begin the live walkthrough.";
-  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAwaitingReply, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
+  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAgentReady, isAwaitingReply, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
 
   useEffect(() => {
     let cancelled = false;
@@ -268,6 +274,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }, [isLive]);
 
   useEffect(() => {
+    const syncAgentIdentity = () => {
+      setAgentIdentity(getAgentIdentity(room));
+    };
+
     const handleDisconnected = () => {
       setIsBotSpeaking(false);
       setIsUserSpeaking(false);
@@ -275,6 +285,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setIsMicTransitioning(false);
       setIsAwaitingReply(false);
       setDidMissUserTurn(false);
+      setAgentIdentity(null);
     };
 
     const handleActiveSpeakersChanged = (participants: Participant[]) => {
@@ -302,20 +313,24 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setBotTtsTranscript((previous) => mergeRollingWords(previous, text, 3));
     };
 
+    syncAgentIdentity();
     room.on(RoomEvent.Disconnected, handleDisconnected);
     room.on(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakersChanged);
     room.on(RoomEvent.TranscriptionReceived, handleTranscriptionReceived);
+    room.on(RoomEvent.ParticipantConnected, syncAgentIdentity);
+    room.on(RoomEvent.ParticipantDisconnected, syncAgentIdentity);
 
     return () => {
       room.off(RoomEvent.Disconnected, handleDisconnected);
       room.off(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakersChanged);
       room.off(RoomEvent.TranscriptionReceived, handleTranscriptionReceived);
+      room.off(RoomEvent.ParticipantConnected, syncAgentIdentity);
+      room.off(RoomEvent.ParticipantDisconnected, syncAgentIdentity);
     };
   }, [room]);
 
   const callAgentRpc = useCallback(
     async (method: string, payload: Record<string, unknown> = {}) => {
-      const agentIdentity = getAgentIdentity(room);
       if (!agentIdentity) {
         throw new Error("The live guide is not connected yet. Please wait a moment and try again.");
       }
@@ -327,7 +342,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         responseTimeout: 5000,
       });
     },
-    [room],
+    [agentIdentity, room],
   );
 
   useEffect(() => {
@@ -370,6 +385,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }
 
   async function handleOpenMic() {
+    if (!isAgentReady) {
+      setUiError("The live guide is still joining. Please wait a moment and try again.");
+      return;
+    }
+
     const micCapabilityError = getMicCapabilityError();
     if (micCapabilityError) {
       setUiError(micCapabilityError);
@@ -500,19 +520,23 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const actionLabel = isBusy || isMicBusy
     ? "Connecting"
     : isLive
-      ? isMicOpen
-        ? "Tap again to send"
-        : "Tap to speak"
+      ? !isAgentReady
+        ? "Guide joining"
+        : isMicOpen
+          ? "Tap again to send"
+          : "Tap to speak"
       : "Begin live walkthrough";
 
   const showTrialCta = visual.id === "trial-stay";
 
   const micHint = isLive
-    ? isMicOpen
-      ? "Listening now. Tap again to send."
-      : isAwaitingReply
-        ? "Sending your question to the guide."
-      : "Tap once to speak. Tap again to send."
+    ? !isAgentReady
+      ? "The live guide is joining. You can speak once the mic lights up."
+      : isMicOpen
+        ? "Listening now. Tap again to send."
+        : isAwaitingReply
+          ? "Sending your question to the guide."
+          : "Tap once to speak. Tap again to send."
     : isAccessReady
       ? "Tap to begin. Once connected, tap once to speak and tap again to send."
       : accessState?.requiresPasscode
@@ -568,7 +592,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                   .filter(Boolean)
                   .join(" ")}
                 onClick={handlePrimaryAction}
-                disabled={isBusy || isMicBusy}
+                disabled={isBusy || isMicBusy || (isLive && !isAgentReady)}
                 aria-label={actionLabel}
                 aria-pressed={isLive ? isMicOpen : undefined}
               >

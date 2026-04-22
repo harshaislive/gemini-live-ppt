@@ -330,7 +330,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }, [room]);
 
   const callAgentRpc = useCallback(
-    async (method: string, payload: Record<string, unknown> = {}) => {
+    async (
+      method: string,
+      payload: Record<string, unknown> = {},
+      responseTimeout = 5000,
+    ) => {
       if (!agentIdentity) {
         throw new Error("The live guide is not connected yet. Please wait a moment and try again.");
       }
@@ -339,7 +343,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         destinationIdentity: agentIdentity,
         method,
         payload: JSON.stringify(payload),
-        responseTimeout: 5000,
+        responseTimeout,
       });
     },
     [agentIdentity, room],
@@ -433,7 +437,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       try {
         const payload = await callAgentRpc("beforest.commit_user_turn", {
           source: "tap_to_speak",
-        });
+        }, 12000);
         const result = JSON.parse(payload) as { transcriptPresent?: boolean };
         if (!result.transcriptPresent) {
           setIsAwaitingReply(false);

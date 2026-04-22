@@ -280,7 +280,12 @@ async def beforest_live(ctx: agents.JobContext):
             data.caller_identity,
         )
         mark_user_turn_pending()
-        transcript = (await session.commit_user_turn()).strip()
+        transcript = (
+            await session.commit_user_turn(
+                transcript_timeout=1.2,
+                stt_flush_duration=0.6,
+            )
+        ).strip()
 
         if not transcript:
             logger.info(

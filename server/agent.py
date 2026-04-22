@@ -16,6 +16,7 @@ from livekit.agents import (
     AgentSession,
     AgentStateChangedEvent,
     UserInputTranscribedEvent,
+    UserStateChangedEvent,
     function_tool,
     room_io,
 )
@@ -39,6 +40,13 @@ MODEL = os.getenv("GEMINI_LIVE_MODEL", "gemini-2.5-flash-native-audio-preview-12
 VOICE_ID = os.getenv("GOOGLE_VOICE_ID", "Puck")
 AGENT_NAME = os.getenv("LIVEKIT_AGENT_NAME", "beforest-guide")
 FRONTEND_IDENTITY = os.getenv("LIVEKIT_FRONTEND_IDENTITY", "frontend")
+
+
+def get_first_name(full_name: str) -> str:
+    cleaned = full_name.strip()
+    if not cleaned:
+        return ""
+    return cleaned.split()[0]
 
 
 class BeforestGuide(Agent):
@@ -129,6 +137,21 @@ async def beforest_live(ctx: agents.JobContext):
         ),
     )
 
+    listener_name = ""
+    try:
+        participant = await ctx.wait_for_participant(identity=FRONTEND_IDENTITY)
+        listener_name = get_first_name(participant.name or "")
+    except Exception:
+        listener_name = ""
+
+    if listener_name:
+        await agent.update_instructions(
+            build_system_instruction()
+            + f"\n\nListener note:\n- The current listener's first name is {listener_name}."
+            + " Use their name sparingly and naturally when it helps warmth or clarity."
+            + " Do not force it into every answer, every opening, or every close."
+        )
+
     runtime_state: dict[str, Any] = {
         "scene_index": -1,
         "turn_kind": None,
@@ -201,7 +224,7 @@ async def beforest_live(ctx: agents.JobContext):
 
     def on_user_input_transcribed(ev: UserInputTranscribedEvent) -> None:
         text = ev.transcript.strip()
-        if not ev.is_final or not text:
+        if not text:
             return
 
         logger.info(
@@ -214,6 +237,24 @@ async def beforest_live(ctx: agents.JobContext):
         runtime_state["awaiting_user_answer"] = True
         if runtime_state["scene_index"] >= 0:
             runtime_state["resume_scene_index"] = runtime_state["scene_index"]
+
+    def on_user_state_changed(ev: UserStateChangedEvent) -> None:
+        if ev.new_state != "speaking":
+            return
+
+        logger.info(
+            "User started speaking scene_index=%s turn_kind=%s",
+            runtime_state["scene_index"],
+            runtime_state["turn_kind"],
+        )
+
+        cancel_pending_scene()
+        runtime_state["awaiting_user_answer"] = True
+        if runtime_state["scene_index"] >= 0:
+            runtime_state["resume_scene_index"] = runtime_state["scene_index"]
+
+        if runtime_state.get("turn_kind") == "scene":
+            session.interrupt()
 
     def on_agent_state_changed(ev: AgentStateChangedEvent) -> None:
         if runtime_state["awaiting_user_answer"] and ev.new_state in {"thinking", "speaking"}:
@@ -233,6 +274,7 @@ async def beforest_live(ctx: agents.JobContext):
                 schedule_scene(int(resume_scene_index), resume=True, delay=1.35)
 
     session.on("user_input_transcribed", on_user_input_transcribed)
+    session.on("user_state_changed", on_user_state_changed)
     session.on("agent_state_changed", on_agent_state_changed)
 
     await agent.push_visual(get_initial_visual())

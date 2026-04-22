@@ -1,6 +1,6 @@
 import { RoomConfiguration } from "@livekit/protocol";
 import { AccessToken, type AccessTokenOptions, type VideoGrant } from "livekit-server-sdk";
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 type ConnectionDetails = {
   serverUrl: string;
@@ -14,10 +14,12 @@ const API_SECRET = process.env.LIVEKIT_API_SECRET;
 const LIVEKIT_URL = process.env.LIVEKIT_URL;
 const ALLOW_INSECURE_LOCAL_TOKEN_ROUTE =
   process.env.ALLOW_INSECURE_LOCAL_TOKEN_ROUTE === "true";
+const ACCESS_COOKIE = "beforest_presentation_access";
+const PASSCODE = process.env.PRESENTATION_PASSCODE?.trim() || "";
 
 export const revalidate = 0;
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   if (process.env.NODE_ENV !== "development" && !ALLOW_INSECURE_LOCAL_TOKEN_ROUTE) {
     throw new Error(
       "This token route is for local development only. Add authentication before production use.",
@@ -25,6 +27,10 @@ export async function POST(req: Request) {
   }
 
   try {
+    if (PASSCODE && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
+      return new NextResponse("Presentation access is locked.", { status: 401 });
+    }
+
     if (!LIVEKIT_URL) {
       throw new Error("LIVEKIT_URL is not defined");
     }

@@ -25,6 +25,11 @@ type ShowImagePayload = Partial<BeforestVisual> & {
   alt?: string;
 };
 
+type AccessState = {
+  requiresPasscode: boolean;
+  authorized: boolean;
+};
+
 function toWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean);
 }
@@ -83,12 +88,32 @@ function applyVisualPayload(current: BeforestVisual, payload: ShowImagePayload):
   };
 }
 
+function getMicCapabilityError() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  if (!window.isSecureContext) {
+    return "Microphone access needs a secure page. Open this app on localhost or HTTPS/Tailscale Serve and try again.";
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    return "This browser cannot open the microphone here. Try Chrome on localhost or an HTTPS URL.";
+  }
+
+  return null;
+}
+
 export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
+  const [accessState, setAccessState] = useState<AccessState | null>(null);
+  const [listenerName, setListenerName] = useState("");
+  const [passcode, setPasscode] = useState("");
+  const [isUnlocking, setIsUnlocking] = useState(false);
   const tokenSource = useMemo(() => TokenSource.endpoint("/api/token"), []);
   const session = useSession(tokenSource, {
     agentName: process.env.NEXT_PUBLIC_LIVEKIT_AGENT_NAME || "beforest-guide",
     participantIdentity: process.env.NEXT_PUBLIC_LIVEKIT_FRONTEND_IDENTITY || "frontend",
-    participantName: "Beforest Listener",
+    participantName: listenerName.trim() || "Beforest Listener",
   });
 
   const room = session.room;
@@ -97,16 +122,36 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
-  const [isPressingMic, setIsPressingMic] = useState(false);
+  const [isMicOpen, setIsMicOpen] = useState(false);
   const [botTtsTranscript, setBotTtsTranscript] = useState("");
   const [userTranscript, setUserTranscript] = useState("");
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
   const [uiError, setUiError] = useState<string | null>(null);
 
+  const isAccessReady = Boolean(accessState?.authorized && listenerName.trim());
+
   const isLive = session.connectionState === ConnectionState.Connected;
   const isBusy = session.connectionState === ConnectionState.Connecting || isStarting;
 
   const displayedSubtitle = useMemo(() => {
+    if (!accessState) {
+      return "Preparing the presentation...";
+    }
+
+    if (!accessState.authorized) {
+      return accessState.requiresPasscode
+        ? "Enter your name and passcode to open the presentation."
+        : "Enter your name to open the presentation.";
+    }
+
+    if (!listenerName.trim()) {
+      return "Enter your name to begin.";
+    }
+
+    if (isMicOpen) {
+      return "Tap again to send your question.";
+    }
+
     if (isUserSpeaking) {
       return takeLastWords(userTranscript.trim(), 3) || "Listening...";
     }
@@ -124,7 +169,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     if (isLive) {
-      return visual.note;
+      return "";
     }
 
     if (hasEverConnected) {
@@ -132,7 +177,25 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     return "Tap the mic to begin the live walkthrough.";
-  }, [botTtsTranscript, hasEverConnected, isBusy, isLive, isUserSpeaking, uiError, userTranscript, visual.note]);
+  }, [accessState, botTtsTranscript, hasEverConnected, isBusy, isLive, isMicOpen, isUserSpeaking, listenerName, uiError, userTranscript]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAccessState() {
+      const response = await fetch("/api/access", { cache: "no-store" });
+      const data = (await response.json()) as AccessState;
+      if (!cancelled) {
+        setAccessState(data);
+      }
+    }
+
+    void loadAccessState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleShowImageRpc = useCallback(
     async (data: RpcInvocationData) => {
@@ -163,7 +226,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const handleDisconnected = () => {
       setIsBotSpeaking(false);
       setIsUserSpeaking(false);
-      setIsPressingMic(false);
+      setIsMicOpen(false);
     };
 
     const handleActiveSpeakersChanged = (participants: Participant[]) => {
@@ -201,15 +264,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }, [room]);
 
   useEffect(() => {
-    if (!isLive || isPressingMic) {
+    if (!isLive || isMicOpen) {
       return;
     }
 
     void room.localParticipant.setMicrophoneEnabled(false);
-  }, [isLive, isPressingMic, room]);
+  }, [isLive, isMicOpen, room]);
 
   async function handleStart() {
-    if (isBusy) {
+    if (isBusy || !isAccessReady) {
       return;
     }
 
@@ -237,38 +300,100 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
   }
 
+  async function handleAccessSubmit() {
+    if (!listenerName.trim()) {
+      setUiError("Please enter your name before you begin.");
+      return;
+    }
+
+    if (!accessState?.requiresPasscode) {
+      setUiError(null);
+      setAccessState({ requiresPasscode: false, authorized: true });
+      return;
+    }
+
+    setIsUnlocking(true);
+    setUiError(null);
+
+    try {
+      const response = await fetch("/api/access", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ passcode }),
+      });
+
+      const data = (await response.json().catch(() => ({}))) as {
+        authorized?: boolean;
+        requiresPasscode?: boolean;
+        error?: string;
+      };
+
+      if (!response.ok || !data.authorized) {
+        throw new Error(data.error || "Unable to unlock the presentation.");
+      }
+
+      setAccessState({
+        requiresPasscode: Boolean(data.requiresPasscode),
+        authorized: true,
+      });
+      setPasscode("");
+    } catch (error) {
+      setUiError(error instanceof Error ? error.message : "Unable to unlock the presentation.");
+    } finally {
+      setIsUnlocking(false);
+    }
+  }
+
   function handlePrimaryAction() {
-    if (isLive) {
-      return;
-    }
-
-    void handleStart();
-  }
-
-  function handleMicPointerDown() {
-    if (!isLive || isBusy || isStarting) {
-      return;
-    }
-
-    setIsPressingMic(true);
-    void room.localParticipant.setMicrophoneEnabled(true);
-  }
-
-  function handleMicPointerUp() {
-    setIsPressingMic(false);
-
     if (!isLive) {
+      void handleStart();
       return;
     }
 
-    void room.localParticipant.setMicrophoneEnabled(false);
+    if (isBusy || isStarting) {
+      return;
+    }
+
+    if (isMicOpen) {
+      setIsMicOpen(false);
+      void room.localParticipant.setMicrophoneEnabled(false);
+      return;
+    }
+
+    setUiError(null);
+    setUserTranscript("");
+
+    const micCapabilityError = getMicCapabilityError();
+    if (micCapabilityError) {
+      setUiError(micCapabilityError);
+      return;
+    }
+
+    setIsMicOpen(true);
+    void room.localParticipant.setMicrophoneEnabled(true);
   }
 
   const actionLabel = isBusy
     ? "Connecting"
     : isLive
-      ? "Hold to talk, release to send"
+      ? isMicOpen
+        ? "Tap again to send"
+        : "Tap to speak"
       : "Begin live walkthrough";
+
+  const showTrialCta = visual.id === "trial-stay";
+
+  const micHint = isLive
+    ? isMicOpen
+      ? "Listening now. Tap again to send."
+      : "Tap once to speak. Tap again to send."
+    : isAccessReady
+      ? "Tap to begin. Once connected, tap once to speak and tap again to send."
+      : accessState?.requiresPasscode
+        ? "Add your name and passcode to open the presentation."
+        : "Add your name to open the presentation.";
 
   return (
     <RoomContext.Provider value={room}>
@@ -312,32 +437,78 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                 type="button"
                 className={[
                   "beforest-mic-button",
-                  isPressingMic ? "is-open" : "",
+                  isMicOpen ? "is-open" : "",
                   isBusy ? "is-busy" : "",
                   isBotSpeaking ? "is-speaking" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
                 onClick={handlePrimaryAction}
-                onPointerDown={handleMicPointerDown}
-                onPointerUp={handleMicPointerUp}
-                onPointerCancel={handleMicPointerUp}
-                onPointerLeave={handleMicPointerUp}
                 disabled={isBusy}
                 aria-label={actionLabel}
-                aria-pressed={isLive ? isPressingMic : undefined}
+                aria-pressed={isLive ? isMicOpen : undefined}
               >
                 <span className="beforest-mic-button__ring" aria-hidden="true" />
                 <span className="beforest-mic-button__surface">
                   {isBusy ? (
                     <LoaderCircle size={24} className="spin" />
-                  ) : isLive && !isPressingMic ? (
+                  ) : isLive && !isMicOpen ? (
                     <MicOff size={24} />
                   ) : (
                     <Mic size={24} />
                   )}
                 </span>
               </button>
+
+              <p className="beforest-mic-hint" aria-live="polite">
+                {micHint}
+              </p>
+
+              {!accessState?.authorized ? (
+                <div className="beforest-access-card">
+                  <input
+                    className="beforest-access-input"
+                    type="text"
+                    value={listenerName}
+                    onChange={(event) => setListenerName(event.target.value)}
+                    placeholder="Your name"
+                    autoComplete="name"
+                  />
+                  {accessState?.requiresPasscode ? (
+                    <input
+                      className="beforest-access-input"
+                      type="password"
+                      value={passcode}
+                      onChange={(event) => setPasscode(event.target.value)}
+                      placeholder="Passcode"
+                      autoComplete="one-time-code"
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    className="beforest-access-button"
+                    onClick={handleAccessSubmit}
+                    disabled={isUnlocking}
+                  >
+                    {isUnlocking ? "Opening..." : "Open presentation"}
+                  </button>
+                </div>
+              ) : null}
+
+              {showTrialCta ? (
+                <div className="beforest-cta-card">
+                  <p className="beforest-cta-eyebrow">The First Real Step</p>
+                  <h2 className="beforest-cta-title">Start your trial stay at Blyton Bungalow.</h2>
+                  <a
+                    className="beforest-cta-button"
+                    href="https://hospitality.beforest.co"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Start your trial
+                  </a>
+                </div>
+              ) : null}
             </div>
 
             <div className="beforest-screen-frame" aria-hidden="true" />

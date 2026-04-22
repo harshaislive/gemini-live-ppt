@@ -146,13 +146,13 @@ RUNTIME_SCENES: tuple[DeckScene, ...] = (
         note="Open by stating what Beforest is and where the 10% idea came from.",
         image_id="opening-forest-road",
         script=(
-            "Start directly. In the first ten seconds, say what Beforest is. Say that Beforest is a nature-first lifestyle collective built around restored hospitality landscapes and repeated return to land. "
-            "Then explain where the 10% idea came from: modern life does not wear people down only through speed. It wears them down through continuous sensory demand, continuous decision load, and continuous interruption. "
-            "So the 10% Life began as a disciplined way to return to nature again and again. Not a holiday club. Not a shortcut to ownership. A recurring reset practice. Thirty nights a year across Beforest landscapes, so the other ninety percent of life is steadier. "
+            "Start directly. In the first ten seconds, say that Beforest builds restored hospitality landscapes people can keep returning to, and that the 10% Life is the cleanest way to access that world without taking on ownership. "
+            "Then connect the dots plainly: modern life wears people down through sensory demand, decision load, and interruption. The 10% idea came from that reality and from the value of repeated return to Beforest landscapes. "
+            "So the 10% Life is not a holiday club and not a shortcut to owning land. It is an access model built around thirty nights a year across Beforest landscapes, so people who do not want to own can still belong to the rhythm of these places and let the other ninety percent of life steady itself. "
             "Keep it plain, direct, and employee-like. No philosophy lecture. No inspiration language. Mention what the places actually hold: fresh air, biodiversity, canopy, weather, silence, and wilderness."
         ),
         resume_prompt=(
-            "Resume by stating plainly what Beforest is and how the 10% idea started: a response to sensory overload, decision load, and interruption. Keep it short, direct, and concrete."
+            "Resume by stating plainly that Beforest builds restored hospitality landscapes and the 10% idea is the access model for people who want repeated return without ownership. Keep it short, direct, and concrete."
         ),
     ),
     DeckScene(
@@ -162,8 +162,8 @@ RUNTIME_SCENES: tuple[DeckScene, ...] = (
         note="Make the Beforest landscapes feel concrete, not poetic.",
         image_id="quote-erosion",
         script=(
-            "Keep this short and concrete. Say that Beforest is built around landscapes you can keep returning to, not a one-time stay. Mention Coorg, the Western Ghats, restored ground, birdlife, cooler air, canopy, weather, and the kind of silence that settles the body quickly. "
-            "Say plainly that this is what the 10% idea is for: not more leisure, but repeated contact with places that reduce noise and restore attention."
+            "Keep this short and concrete. Say that Beforest is built around landscapes you can keep returning to, not a one-time stay and not a burden of ownership. Mention Coorg, the Western Ghats, restored ground, birdlife, cooler air, canopy, weather, and the kind of silence that settles the body quickly. "
+            "Say plainly that this is what the 10% idea is for: access to these conditions through repeated return, not more leisure and not more possessions."
         ),
         resume_prompt=(
             "Resume with direct landscape language: restored ground, fresh air, biodiversity, silence, and repeated return. No quote language."
@@ -176,8 +176,8 @@ RUNTIME_SCENES: tuple[DeckScene, ...] = (
         note="State the model cleanly and without abstraction.",
         image_id="protected-time-canopy",
         script=(
-            "Say this plainly. Thirty nights a year is enough to change the quality of the rest of the year. Not because it is a grand reset. Because it is repeated. Beforest is built around that repetition. You return to the same hospitality landscapes, the same slower conditions, the same cleaner air, the same silence. "
-            "This is not escape. It is protected time. That is why there is no carry-forward logic in the philosophy of it. The point is rhythm."
+            "Say this plainly. Thirty nights a year is enough to change the quality of the rest of the year. Not because it is a grand reset. Because it is repeated. Beforest is built around that repetition, and the 10% structure gives people access to it without asking them to own a second life they have to manage. You return to the same hospitality landscapes, the same slower conditions, the same cleaner air, the same silence. "
+            "This is not escape. It is protected time. That is why there is no carry-forward logic in the philosophy of it. The point is rhythm, access, and return."
         ),
         resume_prompt=(
             "Resume with one direct explanation: thirty nights works because it is repeated protected time, not because it is dramatic."

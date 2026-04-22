@@ -580,7 +580,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
-          explicitVadSignal: true,
           tools: [{ functionDeclarations: toolDeclarations }],
         },
       });

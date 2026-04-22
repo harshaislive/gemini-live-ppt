@@ -53,6 +53,11 @@ type RecorderState = {
   sampleRate: number;
 };
 
+type QueuedAudioChunk = {
+  url: string;
+  subtitle: string;
+};
+
 function toWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean);
 }
@@ -174,7 +179,7 @@ function audioBlobFromMessage(message: LiveServerMessage) {
     (part) => part.inlineData?.data && part.inlineData?.mimeType?.startsWith("audio/"),
   );
 
-  const data = inlinePart?.inlineData?.data;
+  const data = inlinePart?.inlineData?.data || message.data;
   const mimeType = inlinePart?.inlineData?.mimeType || "audio/pcm";
   if (!data) {
     return null;
@@ -211,7 +216,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderState | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioQueueRef = useRef<string[]>([]);
+  const audioQueueRef = useRef<QueuedAudioChunk[]>([]);
+  const pendingBotTranscriptRef = useRef("");
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
 
@@ -308,8 +314,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       if (audioRef.current) {
         audioRef.current.pause();
       }
-      for (const url of audioQueueRef.current) {
-        URL.revokeObjectURL(url);
+      for (const chunk of audioQueueRef.current) {
+        URL.revokeObjectURL(chunk.url);
       }
       audioQueueRef.current = [];
       void sessionRef.current?.close?.();
@@ -321,25 +327,26 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }, []);
 
   const playNextAudioChunk = useCallback(() => {
-    const nextUrl = audioQueueRef.current.shift();
-    if (!nextUrl) {
+    const nextChunk = audioQueueRef.current.shift();
+    if (!nextChunk) {
       setIsBotSpeaking(false);
       return;
     }
 
     const audio = audioRef.current || new Audio();
     audioRef.current = audio;
-    audio.src = nextUrl;
+    setBotTtsTranscript(nextChunk.subtitle);
+    audio.src = nextChunk.url;
     audio.onended = () => {
-      URL.revokeObjectURL(nextUrl);
+      URL.revokeObjectURL(nextChunk.url);
       playNextAudioChunk();
     };
     audio.onerror = () => {
-      URL.revokeObjectURL(nextUrl);
+      URL.revokeObjectURL(nextChunk.url);
       playNextAudioChunk();
     };
     void audio.play().catch(() => {
-      URL.revokeObjectURL(nextUrl);
+      URL.revokeObjectURL(nextChunk.url);
       playNextAudioChunk();
     });
   }, []);
@@ -349,8 +356,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       audioRef.current.pause();
       audioRef.current.src = "";
     }
-    for (const url of audioQueueRef.current) {
-      URL.revokeObjectURL(url);
+    for (const chunk of audioQueueRef.current) {
+      URL.revokeObjectURL(chunk.url);
     }
     audioQueueRef.current = [];
     setIsBotSpeaking(false);
@@ -424,7 +431,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       const text = message.serverContent.outputTranscription.text.trim();
       if (text) {
         setIsAwaitingReply(false);
-        setBotTtsTranscript((previous) => mergeRollingWords(previous, text, 3));
+        pendingBotTranscriptRef.current = mergeRollingWords(pendingBotTranscriptRef.current, text, 3);
       }
     }
 
@@ -435,7 +442,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const audioBlob = audioBlobFromMessage(message);
     if (audioBlob) {
       const url = URL.createObjectURL(audioBlob);
-      audioQueueRef.current.push(url);
+      audioQueueRef.current.push({
+        url,
+        subtitle: pendingBotTranscriptRef.current,
+      });
       setIsBotSpeaking(true);
       if (!audioRef.current || audioRef.current.paused) {
         playNextAudioChunk();
@@ -506,6 +516,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsStarting(true);
     setUiError(null);
     setBotTtsTranscript("");
+    pendingBotTranscriptRef.current = "";
     setUserTranscript("");
     setDidMissUserTurn(false);
     setIsAwaitingReply(false);
@@ -580,6 +591,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: process.env.NEXT_PUBLIC_GOOGLE_VOICE_ID || "Puck",
+              },
+            },
+          },
           tools: [{ functionDeclarations: toolDeclarations }],
         },
       });

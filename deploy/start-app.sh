@@ -11,7 +11,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 cd /app/server
-uv run python agent.py start &
+/app/server/.venv/bin/python agent.py start &
 AGENT_PID=$!
 
 cd /app/client

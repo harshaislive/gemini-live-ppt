@@ -121,6 +121,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const room = session.room;
 
   const [isStarting, setIsStarting] = useState(false);
+  const [isMicTransitioning, setIsMicTransitioning] = useState(false);
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -136,6 +137,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   const isLive = session.connectionState === ConnectionState.Connected;
   const isBusy = session.connectionState === ConnectionState.Connecting || isStarting;
+  const isMicBusy = isMicTransitioning;
 
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
@@ -293,7 +295,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
 
-    void room.localParticipant.setMicrophoneEnabled(false);
+    void room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
   }, [isLive, isMicOpen, room]);
 
   async function handleStart() {
@@ -322,6 +324,49 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           : "Unable to begin the live walkthrough.",
       );
       setIsStarting(false);
+    }
+  }
+
+  async function handleOpenMic() {
+    const micCapabilityError = getMicCapabilityError();
+    if (micCapabilityError) {
+      setUiError(micCapabilityError);
+      return;
+    }
+
+    setIsMicTransitioning(true);
+    setUiError(null);
+    setUserTranscript("");
+
+    try {
+      await room.localParticipant.setMicrophoneEnabled(true);
+      setIsMicOpen(true);
+    } catch (error) {
+      setIsMicOpen(false);
+      setUiError(
+        error instanceof Error
+          ? error.message
+          : "Microphone access failed. Check browser permissions and try again.",
+      );
+    } finally {
+      setIsMicTransitioning(false);
+    }
+  }
+
+  async function handleCloseMic() {
+    setIsMicTransitioning(true);
+
+    try {
+      await room.localParticipant.setMicrophoneEnabled(false);
+    } catch (error) {
+      setUiError(
+        error instanceof Error
+          ? error.message
+          : "Could not close the microphone cleanly.",
+      );
+    } finally {
+      setIsMicOpen(false);
+      setIsMicTransitioning(false);
     }
   }
 
@@ -382,30 +427,19 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
 
-    if (isBusy || isStarting) {
+    if (isBusy || isStarting || isMicBusy) {
       return;
     }
 
     if (isMicOpen) {
-      setIsMicOpen(false);
-      void room.localParticipant.setMicrophoneEnabled(false);
+      void handleCloseMic();
       return;
     }
 
-    setUiError(null);
-    setUserTranscript("");
-
-    const micCapabilityError = getMicCapabilityError();
-    if (micCapabilityError) {
-      setUiError(micCapabilityError);
-      return;
-    }
-
-    setIsMicOpen(true);
-    void room.localParticipant.setMicrophoneEnabled(true);
+    void handleOpenMic();
   }
 
-  const actionLabel = isBusy
+  const actionLabel = isBusy || isMicBusy
     ? "Connecting"
     : isLive
       ? isMicOpen
@@ -468,19 +502,19 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                 className={[
                   "beforest-mic-button",
                   isMicOpen ? "is-open" : "",
-                  isBusy ? "is-busy" : "",
+                  isBusy || isMicBusy ? "is-busy" : "",
                   isBotSpeaking ? "is-speaking" : "",
                 ]
                   .filter(Boolean)
                   .join(" ")}
                 onClick={handlePrimaryAction}
-                disabled={isBusy}
+                disabled={isBusy || isMicBusy}
                 aria-label={actionLabel}
                 aria-pressed={isLive ? isMicOpen : undefined}
               >
                 <span className="beforest-mic-button__ring" aria-hidden="true" />
                 <span className="beforest-mic-button__surface">
-                  {isBusy ? (
+                  {isBusy || isMicBusy ? (
                     <LoaderCircle size={24} className="spin" />
                   ) : isLive && !isMicOpen ? (
                     <MicOff size={24} />

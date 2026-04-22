@@ -280,8 +280,21 @@ async def beforest_live(ctx: agents.JobContext):
             data.caller_identity,
         )
         mark_user_turn_pending()
-        await session.commit_user_turn()
-        return json.dumps({"status": "ok"})
+        transcript = (await session.commit_user_turn()).strip()
+
+        if not transcript:
+            logger.info(
+                "No user transcript captured; resuming scene_index=%s",
+                runtime_state.get("resume_scene_index"),
+            )
+            runtime_state["awaiting_user_answer"] = False
+            runtime_state["turn_kind"] = None
+            resume_scene_index = runtime_state.get("resume_scene_index")
+            if resume_scene_index is not None:
+                schedule_scene(int(resume_scene_index), resume=True, delay=0.6)
+            return json.dumps({"status": "ok", "transcriptPresent": False})
+
+        return json.dumps({"status": "ok", "transcriptPresent": True})
 
     def on_agent_state_changed(ev: AgentStateChangedEvent) -> None:
         if runtime_state["awaiting_user_answer"] and ev.new_state in {"thinking", "speaking"}:

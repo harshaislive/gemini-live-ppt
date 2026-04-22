@@ -128,6 +128,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   const [isStarting, setIsStarting] = useState(false);
   const [isMicTransitioning, setIsMicTransitioning] = useState(false);
+  const [isAwaitingReply, setIsAwaitingReply] = useState(false);
+  const [didMissUserTurn, setDidMissUserTurn] = useState(false);
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -157,7 +159,17 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     if (isMicOpen) {
-      return "Tap again to send your question.";
+      return isUserSpeaking
+        ? takeLastWords(userTranscript.trim(), 3) || "Listening..."
+        : "Listening. Speak, then tap again to send.";
+    }
+
+    if (isAwaitingReply) {
+      return "Answering your question...";
+    }
+
+    if (didMissUserTurn) {
+      return "No question captured. Tap once to speak, then tap again to send.";
     }
 
     if (isUserSpeaking) {
@@ -185,7 +197,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     return "Tap the mic to begin the live walkthrough.";
-  }, [accessState, botTtsTranscript, hasEverConnected, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
+  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAwaitingReply, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
 
   useEffect(() => {
     let cancelled = false;
@@ -260,6 +272,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setIsBotSpeaking(false);
       setIsUserSpeaking(false);
       setIsMicOpen(false);
+      setIsMicTransitioning(false);
+      setIsAwaitingReply(false);
+      setDidMissUserTurn(false);
     };
 
     const handleActiveSpeakersChanged = (participants: Participant[]) => {
@@ -279,9 +294,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
       if (participant.identity === room.localParticipant.identity) {
         setUserTranscript(text);
+        setDidMissUserTurn(false);
         return;
       }
 
+      setIsAwaitingReply(false);
       setBotTtsTranscript((previous) => mergeRollingWords(previous, text, 3));
     };
 
@@ -303,7 +320,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         throw new Error("The live guide is not connected yet. Please wait a moment and try again.");
       }
 
-      await room.localParticipant.performRpc({
+      return room.localParticipant.performRpc({
         destinationIdentity: agentIdentity,
         method,
         payload: JSON.stringify(payload),
@@ -330,6 +347,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setUiError(null);
     setBotTtsTranscript("");
     setUserTranscript("");
+    setDidMissUserTurn(false);
+    setIsAwaitingReply(false);
 
     try {
       await room.startAudio();
@@ -360,6 +379,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsMicTransitioning(true);
     setUiError(null);
     setUserTranscript("");
+    setDidMissUserTurn(false);
+    setIsAwaitingReply(false);
 
     try {
       await callAgentRpc("beforest.prepare_user_turn", {
@@ -381,13 +402,21 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   async function handleCloseMic() {
     setIsMicTransitioning(true);
+    setDidMissUserTurn(false);
+    setIsAwaitingReply(true);
 
     try {
       await room.localParticipant.setMicrophoneEnabled(false);
-      await callAgentRpc("beforest.commit_user_turn", {
+      const payload = await callAgentRpc("beforest.commit_user_turn", {
         source: "tap_to_speak",
       });
+      const result = JSON.parse(payload) as { transcriptPresent?: boolean };
+      if (!result.transcriptPresent) {
+        setIsAwaitingReply(false);
+        setDidMissUserTurn(true);
+      }
     } catch (error) {
+      setIsAwaitingReply(false);
       setUiError(
         error instanceof Error
           ? error.message
@@ -481,6 +510,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const micHint = isLive
     ? isMicOpen
       ? "Listening now. Tap again to send."
+      : isAwaitingReply
+        ? "Sending your question to the guide."
       : "Tap once to speak. Tap again to send."
     : isAccessReady
       ? "Tap to begin. Once connected, tap once to speak and tap again to send."

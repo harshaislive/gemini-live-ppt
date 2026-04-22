@@ -1,17 +1,8 @@
-# Beforest agent server
+# Beforest content bundle
 
-LiveKit Gemini Live agent for the Beforest editorial presentation experience.
+This directory now holds the Beforest content assets used by the Next.js app:
 
-## Features
-- Gemini Live speech-to-speech
-- LiveKit WebRTC transport
-- Approved markdown knowledge retrieval
-- Curated image selection tool
-- LiveKit RPC for frontend visual updates
+- `content/knowledge/*.md` approved knowledge files
+- `content/images/images.json` curated image manifest
 
-## Local run
-```bash
-cp env.example .env
-uv sync
-uv run python agent.py dev
-```
+The runtime is now direct Gemini Live from the Next.js app, so there is no separate Python agent process in this directory anymore.

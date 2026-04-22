@@ -1,21 +1,10 @@
 FROM node:22-bookworm-slim
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_LINK_MODE=copy \
-    UV_COMPILE_BYTECODE=1 \
-    PATH="/root/.local/bin:${PATH}"
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
-    python3-pip \
-    curl \
     ca-certificates \
-    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
-
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 
 WORKDIR /app
 
@@ -24,11 +13,8 @@ WORKDIR /app/client
 RUN npm ci
 
 COPY client /app/client
+COPY server/content /app/server/content
 RUN npm run build
-
-COPY server /app/server
-WORKDIR /app/server
-RUN uv sync --locked --no-dev
 
 WORKDIR /app
 COPY deploy/start-app.sh /app/deploy/start-app.sh

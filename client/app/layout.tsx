@@ -34,7 +34,7 @@ const arizonaSans = localFont({
 export const metadata: Metadata = {
   title: "Beforest Live Guide",
   description:
-    "A Beforest editorial voice experience powered by LiveKit and Gemini Live.",
+    "A Beforest editorial voice experience powered by direct Gemini Live.",
   icons: {
     icon: "/favicon.svg",
   },

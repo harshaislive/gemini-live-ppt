@@ -1,37 +1,57 @@
 "use client";
 
-import { RoomAudioRenderer, RoomContext, useSession } from "@livekit/components-react";
+import {
+  GoogleGenAI,
+  Modality,
+  type FunctionCall,
+  type FunctionDeclaration,
+  type FunctionResponse,
+  type LiveServerMessage,
+  type Session,
+} from "@google/genai";
 import { LoaderCircle, Mic, MicOff } from "lucide-react";
 import Image from "next/image";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { INITIAL_VISUAL } from "./beforest";
 import {
-  ConnectionState,
-  RoomEvent,
-  RpcInvocationData,
-  Room,
-  TokenSource,
-  type Participant,
-  type TranscriptionSegment,
-} from "livekit-client";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { INITIAL_VISUAL, type BeforestVisual } from "./beforest";
+  type BeforestVisual,
+  type KnowledgeChunk,
+  searchKnowledge,
+  selectImage,
+} from "@/lib/beforest-shared";
 
 interface ClientAppProps {
   isMobile: boolean;
 }
-
-type ShowImagePayload = Partial<BeforestVisual> & {
-  imageUrl?: string;
-  hook?: string;
-  note?: string;
-  alt?: string;
-};
 
 type AccessState = {
   requiresPasscode: boolean;
   authorized: boolean;
 };
 
+type PresentationContext = {
+  initialVisual: BeforestVisual;
+  images: BeforestVisual[];
+  knowledgeChunks: KnowledgeChunk[];
+  openingPrompt: string;
+};
+
+type GeminiToken = {
+  name: string;
+};
+
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
+const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
+
+type RecorderState = {
+  stream: MediaStream;
+  context: AudioContext;
+  source: MediaStreamAudioSourceNode;
+  processor: ScriptProcessorNode;
+  gain: GainNode;
+  chunks: Float32Array[];
+  sampleRate: number;
+};
 
 function toWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean);
@@ -39,21 +59,17 @@ function toWords(text: string) {
 
 function takeLastWords(text: string, maxWords: number) {
   const words = toWords(text);
-
   if (words.length <= maxWords) {
     return words.join(" ");
   }
-
   return words.slice(-maxWords).join(" ");
 }
 
 function mergeRollingWords(previous: string, next: string, maxWords: number) {
   const nextWords = toWords(next);
-
   if (nextWords.length === 0) {
     return previous;
   }
-
   if (nextWords.length >= maxWords) {
     return nextWords.slice(-maxWords).join(" ");
   }
@@ -65,30 +81,13 @@ function mergeRollingWords(previous: string, next: string, maxWords: number) {
   for (let size = maxOverlap; size > 0; size -= 1) {
     const previousTail = previousWords.slice(-size).join(" ").toLowerCase();
     const nextHead = nextWords.slice(0, size).join(" ").toLowerCase();
-
     if (previousTail === nextHead) {
       overlap = size;
       break;
     }
   }
 
-  const mergedWords = [...previousWords, ...nextWords.slice(overlap)];
-  return mergedWords.slice(-maxWords).join(" ");
-}
-
-function applyVisualPayload(current: BeforestVisual, payload: ShowImagePayload): BeforestVisual {
-  return {
-    ...current,
-    ...payload,
-    id: payload.id ?? current.id,
-    title: payload.title ?? current.title,
-    imageUrl: payload.imageUrl ?? current.imageUrl,
-    hook: payload.hook ?? current.hook,
-    note: payload.note ?? current.note,
-    alt: payload.alt ?? current.alt,
-    tags: payload.tags ?? current.tags,
-    bestFor: payload.bestFor ?? current.bestFor,
-  };
+  return [...previousWords, ...nextWords.slice(overlap)].slice(-maxWords).join(" ");
 }
 
 function getMicCapabilityError() {
@@ -97,19 +96,96 @@ function getMicCapabilityError() {
   }
 
   if (!window.isSecureContext) {
-    return "Microphone access needs a secure page. Open this app on localhost or HTTPS/Tailscale Serve and try again.";
+    return "Microphone access needs a secure page. Open this app on localhost or HTTPS and try again.";
   }
 
   if (!navigator.mediaDevices?.getUserMedia) {
-    return "This browser cannot open the microphone here. Try Chrome on localhost or an HTTPS URL.";
+    return "This browser cannot open the microphone here. Try Chrome on an HTTPS URL.";
   }
 
   return null;
 }
 
-function getAgentIdentity(room: Room) {
-  const remoteParticipant = Array.from(room.remoteParticipants.values())[0];
-  return remoteParticipant?.identity ?? null;
+function base64ToBytes(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function pcmToWav(pcmBytes: Uint8Array, sampleRate = 24000, numChannels = 1) {
+  const buffer = new ArrayBuffer(44 + pcmBytes.length);
+  const view = new DataView(buffer);
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + pcmBytes.length, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * 2, true);
+  view.setUint16(32, numChannels * 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, pcmBytes.length, true);
+  new Uint8Array(buffer, 44).set(pcmBytes);
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+function mergeFloat32Chunks(chunks: Float32Array[]) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Float32Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
+function float32ToPcm16(input: Float32Array) {
+  const pcm = new Int16Array(input.length);
+  for (let index = 0; index < input.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, input[index] || 0));
+    pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return pcm;
+}
+
+function audioBlobFromMessage(message: LiveServerMessage) {
+  const inlinePart = message.serverContent?.modelTurn?.parts?.find(
+    (part) => part.inlineData?.data && part.inlineData?.mimeType?.startsWith("audio/"),
+  );
+
+  const data = inlinePart?.inlineData?.data;
+  const mimeType = inlinePart?.inlineData?.mimeType || "audio/pcm";
+  if (!data) {
+    return null;
+  }
+
+  const bytes = base64ToBytes(data);
+  if (mimeType === "audio/pcm" || mimeType === "audio/l16") {
+    return pcmToWav(bytes);
+  }
+
+  return new Blob([bytes], { type: mimeType });
 }
 
 export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
@@ -117,20 +193,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [listenerName, setListenerName] = useState("");
   const [passcode, setPasscode] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
-  const tokenSource = useMemo(() => TokenSource.endpoint("/api/token"), []);
-  const session = useSession(tokenSource, {
-    agentName: process.env.NEXT_PUBLIC_LIVEKIT_AGENT_NAME || "beforest-guide",
-    participantIdentity: process.env.NEXT_PUBLIC_LIVEKIT_FRONTEND_IDENTITY || "frontend",
-    participantName: listenerName.trim() || "Beforest Listener",
-  });
-
-  const room = session.room;
-
+  const [presentationContext, setPresentationContext] = useState<PresentationContext | null>(null);
   const [isStarting, setIsStarting] = useState(false);
+  const [isSessionReady, setIsSessionReady] = useState(false);
   const [isMicTransitioning, setIsMicTransitioning] = useState(false);
   const [isAwaitingReply, setIsAwaitingReply] = useState(false);
   const [didMissUserTurn, setDidMissUserTurn] = useState(false);
-  const [agentIdentity, setAgentIdentity] = useState<string | null>(null);
   const [hasEverConnected, setHasEverConnected] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
@@ -140,74 +208,66 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
   const [uiError, setUiError] = useState<string | null>(null);
 
+  const sessionRef = useRef<Session | null>(null);
+  const recorderRef = useRef<RecorderState | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioQueueRef = useRef<string[]>([]);
+  const imagesRef = useRef<BeforestVisual[]>([]);
+  const knowledgeRef = useRef<KnowledgeChunk[]>([]);
+
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim());
   const shouldShowNameForm = Boolean(accessState && !listenerName.trim());
   const shouldShowAccessForm = Boolean(accessState && (!accessState.authorized || shouldShowNameForm));
-
-  const isLive = session.connectionState === ConnectionState.Connected;
-  const isBusy = session.connectionState === ConnectionState.Connecting || isStarting;
+  const isBusy = isStarting;
   const isMicBusy = isMicTransitioning;
-  const isAgentReady = Boolean(agentIdentity);
+  const isLive = isSessionReady;
 
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
       return "Preparing the presentation...";
     }
-
     if (shouldShowAccessForm) {
       return accessState.requiresPasscode
         ? "Enter your name and passcode to open the presentation."
         : "Enter your name to open the presentation.";
     }
-
     if (isMicOpen) {
       return isUserSpeaking
         ? takeLastWords(userTranscript.trim(), 3) || "Listening..."
         : "Listening. Speak, then tap again to send.";
     }
-
     if (isAwaitingReply) {
       return "Answering your question...";
     }
-
-    if (isLive && !isAgentReady) {
-      return "The live guide is joining. One moment...";
+    if (isLive && !hasEverConnected) {
+      return "Opening Gemini Live...";
     }
-
     if (didMissUserTurn) {
       return "No question captured. Tap once to speak, then tap again to send.";
     }
-
     if (isUserSpeaking) {
       return takeLastWords(userTranscript.trim(), 3) || "Listening...";
     }
-
     if (botTtsTranscript.trim()) {
       return takeLastWords(botTtsTranscript.trim(), 3);
     }
-
     if (uiError) {
-      return "Connection failed. Tap the mic to try again.";
+      return uiError;
     }
-
     if (isBusy) {
       return "Connecting to Gemini Live...";
     }
-
     if (isLive) {
       return "";
     }
-
     if (hasEverConnected) {
       return "Tap the mic to reconnect.";
     }
-
     return "Tap the mic to begin the live walkthrough.";
-  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAgentReady, isAwaitingReply, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
+  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAwaitingReply, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadAccessState() {
       const response = await fetch("/api/access", { cache: "no-store" });
       const data = (await response.json()) as AccessState;
@@ -215,9 +275,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         setAccessState(data);
       }
     }
-
     void loadAccessState();
-
     return () => {
       cancelled = true;
     };
@@ -227,7 +285,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (typeof window === "undefined") {
       return;
     }
-
     const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY)?.trim();
     if (storedName) {
       setListenerName(storedName);
@@ -238,127 +295,211 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (typeof window === "undefined") {
       return;
     }
-
     const trimmedName = listenerName.trim();
     if (!trimmedName) {
       window.localStorage.removeItem(LISTENER_NAME_STORAGE_KEY);
       return;
     }
-
     window.localStorage.setItem(LISTENER_NAME_STORAGE_KEY, trimmedName);
   }, [listenerName]);
 
-  const handleShowImageRpc = useCallback(
-    async (data: RpcInvocationData) => {
-      const payload = JSON.parse(data.payload || "{}") as ShowImagePayload;
-      setVisual((current) => applyVisualPayload(current, payload));
-      return JSON.stringify({ status: "ok" });
-    },
-    [],
-  );
-
   useEffect(() => {
-    room.registerRpcMethod("show_image", handleShowImageRpc);
-
     return () => {
-      room.unregisterRpcMethod("show_image");
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      for (const url of audioQueueRef.current) {
+        URL.revokeObjectURL(url);
+      }
+      audioQueueRef.current = [];
+      void sessionRef.current?.close?.();
+      if (recorderRef.current) {
+        recorderRef.current.stream.getTracks().forEach((track) => track.stop());
+        void recorderRef.current.context.close();
+      }
     };
-  }, [handleShowImageRpc, room]);
+  }, []);
 
-  useEffect(() => {
-    if (isLive) {
-      setHasEverConnected(true);
-      setIsStarting(false);
-      setUiError(null);
-    }
-  }, [isLive]);
-
-  useEffect(() => {
-    const syncAgentIdentity = () => {
-      setAgentIdentity(getAgentIdentity(room));
-    };
-
-    const handleDisconnected = () => {
+  const playNextAudioChunk = useCallback(() => {
+    const nextUrl = audioQueueRef.current.shift();
+    if (!nextUrl) {
       setIsBotSpeaking(false);
-      setIsUserSpeaking(false);
-      setIsMicOpen(false);
-      setIsMicTransitioning(false);
-      setIsAwaitingReply(false);
-      setDidMissUserTurn(false);
-      setAgentIdentity(null);
-    };
-
-    const handleActiveSpeakersChanged = (participants: Participant[]) => {
-      const localIdentity = room.localParticipant.identity;
-      setIsUserSpeaking(participants.some((participant) => participant.identity === localIdentity));
-      setIsBotSpeaking(participants.some((participant) => participant.identity !== localIdentity));
-    };
-
-    const handleTranscriptionReceived = (
-      segments: TranscriptionSegment[],
-      participant?: Participant,
-    ) => {
-      const text = segments.map((segment) => segment.text).join(" ").trim();
-      if (!text || !participant) {
-        return;
-      }
-
-      if (participant.identity === room.localParticipant.identity) {
-        setUserTranscript(text);
-        setDidMissUserTurn(false);
-        return;
-      }
-
-      setIsAwaitingReply(false);
-      setBotTtsTranscript((previous) => mergeRollingWords(previous, text, 3));
-    };
-
-    syncAgentIdentity();
-    room.on(RoomEvent.Disconnected, handleDisconnected);
-    room.on(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakersChanged);
-    room.on(RoomEvent.TranscriptionReceived, handleTranscriptionReceived);
-    room.on(RoomEvent.ParticipantConnected, syncAgentIdentity);
-    room.on(RoomEvent.ParticipantDisconnected, syncAgentIdentity);
-
-    return () => {
-      room.off(RoomEvent.Disconnected, handleDisconnected);
-      room.off(RoomEvent.ActiveSpeakersChanged, handleActiveSpeakersChanged);
-      room.off(RoomEvent.TranscriptionReceived, handleTranscriptionReceived);
-      room.off(RoomEvent.ParticipantConnected, syncAgentIdentity);
-      room.off(RoomEvent.ParticipantDisconnected, syncAgentIdentity);
-    };
-  }, [room]);
-
-  const callAgentRpc = useCallback(
-    async (
-      method: string,
-      payload: Record<string, unknown> = {},
-      responseTimeout = 5000,
-    ) => {
-      if (!agentIdentity) {
-        throw new Error("The live guide is not connected yet. Please wait a moment and try again.");
-      }
-
-      return room.localParticipant.performRpc({
-        destinationIdentity: agentIdentity,
-        method,
-        payload: JSON.stringify(payload),
-        responseTimeout,
-      });
-    },
-    [agentIdentity, room],
-  );
-
-  useEffect(() => {
-    if (!isLive || isMicOpen) {
       return;
     }
 
-    void room.localParticipant.setMicrophoneEnabled(false).catch(() => undefined);
-  }, [isLive, isMicOpen, room]);
+    const audio = audioRef.current || new Audio();
+    audioRef.current = audio;
+    audio.src = nextUrl;
+    audio.onended = () => {
+      URL.revokeObjectURL(nextUrl);
+      playNextAudioChunk();
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(nextUrl);
+      playNextAudioChunk();
+    };
+    void audio.play().catch(() => {
+      URL.revokeObjectURL(nextUrl);
+      playNextAudioChunk();
+    });
+  }, []);
+
+  const stopPlayback = useCallback(() => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+    }
+    for (const url of audioQueueRef.current) {
+      URL.revokeObjectURL(url);
+    }
+    audioQueueRef.current = [];
+    setIsBotSpeaking(false);
+  }, []);
+
+  const runToolCalls = useCallback(async (functionCalls: FunctionCall[]) => {
+    const responses: FunctionResponse[] = functionCalls.map((call) => {
+      const name = call.name || "";
+      if (name === "retrieve_beforest_knowledge") {
+        const query = String(call.args?.query || "").trim();
+        const topK = Number(call.args?.top_k || 3);
+        const matches = searchKnowledge(knowledgeRef.current, query, topK);
+        return {
+          id: call.id || crypto.randomUUID(),
+          name,
+          response: {
+            query,
+            matches,
+            guidance:
+              "Use only these approved excerpts and the current conversation context. If the answer is still not grounded, say you do not have an approved answer yet.",
+          },
+        };
+      }
+
+      if (name === "show_curated_image") {
+        const image = selectImage(
+          imagesRef.current,
+          String(call.args?.topic || ""),
+          String(call.args?.mood || ""),
+          String(call.args?.image_id || ""),
+        );
+        setVisual(image);
+        return {
+          id: call.id || crypto.randomUUID(),
+          name,
+          response: {
+            selected: image,
+            guidance:
+              "The frontend visual has been updated. Continue naturally without mentioning the tool.",
+          },
+        };
+      }
+
+      return {
+        id: call.id || crypto.randomUUID(),
+        name: name || "unknown",
+        response: {
+          error: "Unknown tool requested.",
+        },
+      };
+    });
+
+    sessionRef.current?.sendToolResponse({ functionResponses: responses });
+  }, []);
+
+  const handleLiveMessage = useCallback(async (message: LiveServerMessage) => {
+    if (message.toolCall?.functionCalls?.length) {
+      await runToolCalls(message.toolCall.functionCalls);
+      return;
+    }
+
+    if (message.serverContent?.inputTranscription?.text) {
+      const text = message.serverContent.inputTranscription.text.trim();
+      if (text) {
+        setUserTranscript(text);
+        setDidMissUserTurn(false);
+      }
+    }
+
+    if (message.serverContent?.outputTranscription?.text) {
+      const text = message.serverContent.outputTranscription.text.trim();
+      if (text) {
+        setIsAwaitingReply(false);
+        setBotTtsTranscript((previous) => mergeRollingWords(previous, text, 3));
+      }
+    }
+
+    if (message.serverContent?.interrupted) {
+      stopPlayback();
+    }
+
+    const audioBlob = audioBlobFromMessage(message);
+    if (audioBlob) {
+      const url = URL.createObjectURL(audioBlob);
+      audioQueueRef.current.push(url);
+      setIsBotSpeaking(true);
+      if (!audioRef.current || audioRef.current.paused) {
+        playNextAudioChunk();
+      }
+    }
+
+    if (message.serverContent?.turnComplete || message.serverContent?.generationComplete) {
+      setIsAwaitingReply(false);
+    }
+  }, [playNextAudioChunk, runToolCalls, stopPlayback]);
+
+  async function handleAccessSubmit() {
+    if (!listenerName.trim()) {
+      setUiError("Please enter your name before you begin.");
+      return;
+    }
+    if (accessState?.authorized) {
+      setUiError(null);
+      return;
+    }
+    if (!accessState?.requiresPasscode) {
+      setUiError(null);
+      setAccessState({ requiresPasscode: false, authorized: true });
+      return;
+    }
+    setIsUnlocking(true);
+    setUiError(null);
+    try {
+      const response = await fetch("/api/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode }),
+      });
+      const data = await response.json().catch(() => ({} as Record<string, unknown>));
+      if (!response.ok || !data.authorized) {
+        throw new Error(String(data.error || "Unable to unlock the presentation."));
+      }
+      setAccessState({ requiresPasscode: Boolean(data.requiresPasscode), authorized: true });
+      setPasscode("");
+    } catch (error) {
+      setUiError(error instanceof Error ? error.message : "Unable to unlock the presentation.");
+    } finally {
+      setIsUnlocking(false);
+    }
+  }
+
+  async function ensurePresentationContext() {
+    if (presentationContext) {
+      return presentationContext;
+    }
+    const response = await fetch("/api/presentation-context", { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error("Unable to load presentation context.");
+    }
+    const data = (await response.json()) as PresentationContext;
+    setPresentationContext(data);
+    setVisual(data.initialVisual);
+    imagesRef.current = data.images;
+    knowledgeRef.current = data.knowledgeChunks;
+    return data;
+  }
 
   async function handleStart() {
-    if (isBusy || !isAccessReady) {
+    if (isBusy || !isAccessReady || isSessionReady) {
       return;
     }
 
@@ -370,33 +511,99 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsAwaitingReply(false);
 
     try {
-      await room.startAudio();
-      await session.start({
-        tracks: {
-          microphone: {
-            enabled: false,
+      const context = await ensurePresentationContext();
+      const tokenResponse = await fetch("/api/gemini-live-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listenerName }),
+      });
+      if (!tokenResponse.ok) {
+        throw new Error(await tokenResponse.text());
+      }
+      const token = (await tokenResponse.json()) as GeminiToken;
+      const ai = new GoogleGenAI({ apiKey: token.name, apiVersion: "v1alpha" });
+
+      const toolDeclarations: FunctionDeclaration[] = [
+        {
+          name: "retrieve_beforest_knowledge",
+          description:
+            "Search approved Beforest knowledge for product facts, collectives, pricing framing, structure details, trial-stay information, and brand constraints.",
+          parametersJsonSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
+              top_k: { type: "integer" },
+            },
+            required: ["query"],
           },
         },
+        {
+          name: "show_curated_image",
+          description:
+            "Select an approved Beforest image for the current topic and update the frontend visual state.",
+          parametersJsonSchema: {
+            type: "object",
+            properties: {
+              topic: { type: "string" },
+              mood: { type: "string" },
+              image_id: { type: "string" },
+            },
+            required: ["topic"],
+          },
+        },
+      ];
+
+      const liveSession = await ai.live.connect({
+        model: MODEL,
+        callbacks: {
+          onopen: () => {
+            setIsSessionReady(true);
+            setHasEverConnected(true);
+            setIsStarting(false);
+            setUiError(null);
+          },
+          onmessage: (message: LiveServerMessage) => {
+            void handleLiveMessage(message);
+          },
+          onerror: (event: ErrorEvent) => {
+            setUiError(event.message || "Gemini Live connection failed.");
+            setIsStarting(false);
+          },
+          onclose: () => {
+            setIsSessionReady(false);
+            setIsMicOpen(false);
+            setIsAwaitingReply(false);
+            stopPlayback();
+          },
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          explicitVadSignal: true,
+          tools: [{ functionDeclarations: toolDeclarations }],
+        },
       });
-    } catch (connectError) {
-      setUiError(
-        connectError instanceof Error
-          ? connectError.message
-          : "Unable to begin the live walkthrough.",
-      );
+
+      sessionRef.current = liveSession;
+      liveSession.sendClientContent({
+        turns: [{ role: "user", parts: [{ text: context.openingPrompt }] }],
+        turnComplete: true,
+      });
+    } catch (error) {
+      setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
       setIsStarting(false);
     }
   }
 
   async function handleOpenMic() {
-    if (!isAgentReady) {
-      setUiError("The live guide is still joining. Please wait a moment and try again.");
-      return;
-    }
-
     const micCapabilityError = getMicCapabilityError();
     if (micCapabilityError) {
       setUiError(micCapabilityError);
+      return;
+    }
+    if (!sessionRef.current || !isSessionReady) {
+      setUiError("Gemini Live is still joining. Please wait a moment and try again.");
       return;
     }
 
@@ -405,18 +612,39 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setUserTranscript("");
     setDidMissUserTurn(false);
     setIsAwaitingReply(false);
+    stopPlayback();
 
     try {
-      await room.localParticipant.setMicrophoneEnabled(true);
-      setIsMicOpen(true);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const context = new AudioContext({ sampleRate: 16000 });
+      const source = context.createMediaStreamSource(stream);
+      const processor = context.createScriptProcessor(4096, 1, 1);
+      const gain = context.createGain();
+      gain.gain.value = 0;
 
-      void callAgentRpc("beforest.prepare_user_turn", {
-        source: "tap_to_speak",
-      }).catch((error) => {
-        console.warn("prepare_user_turn rpc failed", error);
-      });
+      const chunks: Float32Array[] = [];
+      processor.onaudioprocess = (event) => {
+        chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+        setIsUserSpeaking(true);
+      };
+
+      source.connect(processor);
+      processor.connect(gain);
+      gain.connect(context.destination);
+
+      recorderRef.current = {
+        stream,
+        context,
+        source,
+        processor,
+        gain,
+        chunks,
+        sampleRate: context.sampleRate,
+      };
+
+      sessionRef.current.sendRealtimeInput({ activityStart: {} });
+      setIsMicOpen(true);
     } catch (error) {
-      setIsMicOpen(false);
       setUiError(
         error instanceof Error
           ? error.message
@@ -431,84 +659,45 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsMicTransitioning(true);
     setDidMissUserTurn(false);
     setIsAwaitingReply(true);
+    setIsUserSpeaking(false);
 
     try {
-      await room.localParticipant.setMicrophoneEnabled(false);
-      try {
-        const payload = await callAgentRpc("beforest.commit_user_turn", {
-          source: "tap_to_speak",
-        }, 12000);
-        const result = JSON.parse(payload) as { transcriptPresent?: boolean };
-        if (!result.transcriptPresent) {
-          setIsAwaitingReply(false);
-          setDidMissUserTurn(true);
-        }
-      } catch (rpcError) {
-        console.warn("commit_user_turn rpc failed", rpcError);
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      if (!recorder) {
+        setDidMissUserTurn(true);
         setIsAwaitingReply(false);
-        setDidMissUserTurn(false);
+        return;
       }
+
+      recorder.processor.disconnect();
+      recorder.source.disconnect();
+      recorder.gain.disconnect();
+      recorder.stream.getTracks().forEach((track) => track.stop());
+      await recorder.context.close();
+
+      const merged = mergeFloat32Chunks(recorder.chunks);
+      if (!merged.length) {
+        setDidMissUserTurn(true);
+        setIsAwaitingReply(false);
+        sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
+        return;
+      }
+
+      const pcm16 = float32ToPcm16(merged);
+      sessionRef.current?.sendRealtimeInput({
+        audio: {
+          data: bytesToBase64(new Uint8Array(pcm16.buffer)),
+          mimeType: "audio/pcm",
+        },
+      });
+      sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
     } catch (error) {
       setIsAwaitingReply(false);
-      setUiError(
-        error instanceof Error
-          ? error.message
-          : "Could not close the microphone cleanly.",
-      );
+      setUiError(error instanceof Error ? error.message : "Could not send your question.");
     } finally {
       setIsMicOpen(false);
       setIsMicTransitioning(false);
-    }
-  }
-
-  async function handleAccessSubmit() {
-    if (!listenerName.trim()) {
-      setUiError("Please enter your name before you begin.");
-      return;
-    }
-
-    if (accessState?.authorized) {
-      setUiError(null);
-      return;
-    }
-
-    if (!accessState?.requiresPasscode) {
-      setUiError(null);
-      setAccessState({ requiresPasscode: false, authorized: true });
-      return;
-    }
-
-    setIsUnlocking(true);
-    setUiError(null);
-
-    try {
-      const response = await fetch("/api/access", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ passcode }),
-      });
-
-      const data = (await response.json().catch(() => ({}))) as {
-        authorized?: boolean;
-        requiresPasscode?: boolean;
-        error?: string;
-      };
-
-      if (!response.ok || !data.authorized) {
-        throw new Error(data.error || "Unable to unlock the presentation.");
-      }
-
-      setAccessState({
-        requiresPasscode: Boolean(data.requiresPasscode),
-        authorized: true,
-      });
-      setPasscode("");
-    } catch (error) {
-      setUiError(error instanceof Error ? error.message : "Unable to unlock the presentation.");
-    } finally {
-      setIsUnlocking(false);
     }
   }
 
@@ -517,39 +706,31 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       void handleStart();
       return;
     }
-
-    if (isBusy || isStarting || isMicBusy) {
+    if (isBusy || isMicBusy) {
       return;
     }
-
     if (isMicOpen) {
       void handleCloseMic();
       return;
     }
-
     void handleOpenMic();
   }
 
   const actionLabel = isBusy || isMicBusy
     ? "Connecting"
     : isLive
-      ? !isAgentReady
-        ? "Guide joining"
-        : isMicOpen
-          ? "Tap again to send"
-          : "Tap to speak"
+      ? isMicOpen
+        ? "Tap again to send"
+        : "Tap to speak"
       : "Begin live walkthrough";
 
   const showTrialCta = visual.id === "trial-stay";
-
   const micHint = isLive
-    ? !isAgentReady
-      ? "The live guide is joining. You can speak once the mic lights up."
-      : isMicOpen
-        ? "Listening now. Tap again to send."
-        : isAwaitingReply
-          ? "Sending your question to the guide."
-          : "Tap once to speak. Tap again to send."
+    ? isMicOpen
+      ? "Listening now. Tap again to send."
+      : isAwaitingReply
+        ? "Sending your question to Gemini."
+        : "Tap once to speak. Tap again to send."
     : isAccessReady
       ? "Tap to begin. Once connected, tap once to speak and tap again to send."
       : accessState?.requiresPasscode
@@ -557,127 +738,123 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         : "Add your name to open the presentation.";
 
   return (
-    <RoomContext.Provider value={room}>
-      <main className="beforest-shell">
-        <div className="beforest-noise" aria-hidden="true" />
+    <main className="beforest-shell">
+      <div className="beforest-noise" aria-hidden="true" />
 
-        <section className="beforest-story" aria-label="Beforest live walkthrough">
-          <Image
-            key={visual.id || visual.imageUrl}
-            src={visual.imageUrl}
-            alt={visual.alt}
-            fill
-            priority
-            unoptimized
-            className="beforest-story__image"
-            sizes={isMobile ? "100vw" : "100vw"}
-          />
+      <section className="beforest-story" aria-label="Beforest live walkthrough">
+        <Image
+          key={visual.id || visual.imageUrl}
+          src={visual.imageUrl}
+          alt={visual.alt}
+          fill
+          priority
+          unoptimized
+          className="beforest-story__image"
+          sizes={isMobile ? "100vw" : "100vw"}
+        />
 
-          <div className="beforest-story__scrim" aria-hidden="true" />
+        <div className="beforest-story__scrim" aria-hidden="true" />
 
-          <div className="beforest-story__overlay">
-            <header className="beforest-heading" aria-live="polite">
-              <h1 className="beforest-heading__title">{visual.hook}</h1>
-            </header>
+        <div className="beforest-story__overlay">
+          <header className="beforest-heading" aria-live="polite">
+            <h1 className="beforest-heading__title">{visual.hook}</h1>
+          </header>
 
-            <div className="beforest-bottom-ui">
-              {uiError ? (
-                <p className="beforest-inline-error" role="alert">
-                  {uiError}
-                </p>
-              ) : null}
-
-              <p
-                className={`beforest-subtitle${displayedSubtitle ? " visible" : ""}`}
-                aria-live="polite"
-              >
-                {displayedSubtitle}
+          <div className="beforest-bottom-ui">
+            {uiError ? (
+              <p className="beforest-inline-error" role="alert">
+                {uiError}
               </p>
+            ) : null}
 
-              <button
-                type="button"
-                className={[
-                  "beforest-mic-button",
-                  isMicOpen ? "is-open" : "",
-                  isBusy || isMicBusy ? "is-busy" : "",
-                  isBotSpeaking ? "is-speaking" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={handlePrimaryAction}
-                disabled={isBusy || isMicBusy || (isLive && !isAgentReady)}
-                aria-label={actionLabel}
-                aria-pressed={isLive ? isMicOpen : undefined}
-              >
-                <span className="beforest-mic-button__ring" aria-hidden="true" />
-                <span className="beforest-mic-button__surface">
-                  {isBusy || isMicBusy ? (
-                    <LoaderCircle size={24} className="spin" />
-                  ) : isLive && !isMicOpen ? (
-                    <MicOff size={24} />
-                  ) : (
-                    <Mic size={24} />
-                  )}
-                </span>
-              </button>
+            <p
+              className={`beforest-subtitle${displayedSubtitle ? " visible" : ""}`}
+              aria-live="polite"
+            >
+              {displayedSubtitle}
+            </p>
 
-              <p className="beforest-mic-hint" aria-live="polite">
-                {micHint}
-              </p>
+            <button
+              type="button"
+              className={[
+                "beforest-mic-button",
+                isMicOpen ? "is-open" : "",
+                isBusy || isMicBusy ? "is-busy" : "",
+                isBotSpeaking ? "is-speaking" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+              onClick={handlePrimaryAction}
+              disabled={isBusy || isMicBusy}
+              aria-label={actionLabel}
+              aria-pressed={isLive ? isMicOpen : undefined}
+            >
+              <span className="beforest-mic-button__ring" aria-hidden="true" />
+              <span className="beforest-mic-button__surface">
+                {isBusy || isMicBusy ? (
+                  <LoaderCircle size={24} className="spin" />
+                ) : isLive && !isMicOpen ? (
+                  <MicOff size={24} />
+                ) : (
+                  <Mic size={24} />
+                )}
+              </span>
+            </button>
 
-              {shouldShowAccessForm ? (
-                <div className="beforest-access-card">
+            <p className="beforest-mic-hint" aria-live="polite">
+              {micHint}
+            </p>
+
+            {shouldShowAccessForm ? (
+              <div className="beforest-access-card">
+                <input
+                  className="beforest-access-input"
+                  type="text"
+                  value={listenerName}
+                  onChange={(event) => setListenerName(event.target.value)}
+                  placeholder="Your name"
+                  autoComplete="name"
+                />
+                {accessState?.requiresPasscode ? (
                   <input
                     className="beforest-access-input"
-                    type="text"
-                    value={listenerName}
-                    onChange={(event) => setListenerName(event.target.value)}
-                    placeholder="Your name"
-                    autoComplete="name"
+                    type="password"
+                    value={passcode}
+                    onChange={(event) => setPasscode(event.target.value)}
+                    placeholder="Passcode"
+                    autoComplete="one-time-code"
                   />
-                  {accessState?.requiresPasscode ? (
-                    <input
-                      className="beforest-access-input"
-                      type="password"
-                      value={passcode}
-                      onChange={(event) => setPasscode(event.target.value)}
-                      placeholder="Passcode"
-                      autoComplete="one-time-code"
-                    />
-                  ) : null}
-                  <button
-                    type="button"
-                    className="beforest-access-button"
-                    onClick={handleAccessSubmit}
-                    disabled={isUnlocking}
-                  >
-                    {isUnlocking ? "Opening..." : "Open presentation"}
-                  </button>
-                </div>
-              ) : null}
+                ) : null}
+                <button
+                  type="button"
+                  className="beforest-access-button"
+                  onClick={handleAccessSubmit}
+                  disabled={isUnlocking}
+                >
+                  {isUnlocking ? "Opening..." : "Open presentation"}
+                </button>
+              </div>
+            ) : null}
 
-              {showTrialCta ? (
-                <div className="beforest-cta-card">
-                  <p className="beforest-cta-eyebrow">The First Real Step</p>
-                  <h2 className="beforest-cta-title">Start your trial stay at Blyton Bungalow.</h2>
-                  <a
-                    className="beforest-cta-button"
-                    href="https://hospitality.beforest.co"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Start your trial
-                  </a>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="beforest-screen-frame" aria-hidden="true" />
+            {showTrialCta ? (
+              <div className="beforest-cta-card">
+                <p className="beforest-cta-eyebrow">The First Real Step</p>
+                <h2 className="beforest-cta-title">Start your trial stay at Blyton Bungalow.</h2>
+                <a
+                  className="beforest-cta-button"
+                  href="https://hospitality.beforest.co"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Start your trial
+                </a>
+              </div>
+            ) : null}
           </div>
-        </section>
 
-        <RoomAudioRenderer />
-      </main>
-    </RoomContext.Provider>
+          <div className="beforest-screen-frame" aria-hidden="true" />
+        </div>
+      </section>
+    </main>
   );
 };

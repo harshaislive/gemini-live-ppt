@@ -1,0 +1,153 @@
+export type BeforestVisual = {
+  id: string;
+  title: string;
+  imageUrl: string;
+  hook: string;
+  note: string;
+  alt: string;
+  tags?: string[];
+  bestFor?: string[];
+};
+
+export type KnowledgeChunk = {
+  source: string;
+  section: string;
+  content: string;
+  score?: number;
+};
+
+const TOKEN_RE = /[a-z0-9]{3,}/g;
+
+function tokenSet(text: string) {
+  return new Set((text.toLowerCase().match(TOKEN_RE) || []));
+}
+
+export function searchKnowledge(chunks: KnowledgeChunk[], query: string, topK = 4) {
+  const cleanedQuery = query.trim();
+  if (!cleanedQuery) {
+    return [] as KnowledgeChunk[];
+  }
+
+  const queryLower = cleanedQuery.toLowerCase();
+  const queryTokens = tokenSet(cleanedQuery);
+
+  return chunks
+    .map((chunk) => {
+      const blob = `${chunk.source} ${chunk.section} ${chunk.content}`.toLowerCase();
+      const chunkTokens = tokenSet(blob);
+      const overlap = Array.from(queryTokens).filter((token) => chunkTokens.has(token));
+      if (!overlap.length && !blob.includes(queryLower)) {
+        return null;
+      }
+
+      let score = overlap.length * 3;
+      if (blob.includes(queryLower)) {
+        score += 8;
+      }
+      if (Array.from(queryTokens).some((token) => chunk.section.toLowerCase().includes(token))) {
+        score += 4;
+      }
+      if (overlap.length && overlap.length === queryTokens.size) {
+        score += 3;
+      }
+
+      return { ...chunk, score };
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b?.score || 0) - (a?.score || 0))
+    .slice(0, Math.max(1, topK)) as KnowledgeChunk[];
+}
+
+export function selectImage(images: BeforestVisual[], topic = "", mood = "", imageId = "") {
+  if (imageId) {
+    const exact = images.find((image) => image.id === imageId);
+    if (exact) {
+      return exact;
+    }
+  }
+
+  const searchTerms = `${topic} ${mood}`.trim().toLowerCase();
+  if (!searchTerms) {
+    return images[0];
+  }
+
+  const searchTokens = tokenSet(searchTerms);
+  let best = images[0];
+  let bestScore = Number.NEGATIVE_INFINITY;
+
+  for (const image of images) {
+    const blob = [image.title, image.hook, image.note, ...(image.tags || []), ...(image.bestFor || [])]
+      .join(" ")
+      .toLowerCase();
+    const blobTokens = tokenSet(blob);
+    let score = Array.from(searchTokens).filter((token) => blobTokens.has(token)).length * 2.5;
+    if (blob.includes(searchTerms)) {
+      score += 7;
+    }
+    if (Array.from(searchTokens).some((token) => image.title.toLowerCase().includes(token))) {
+      score += 2;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = image;
+    }
+  }
+
+  return best;
+}
+
+export function buildSystemInstruction() {
+  return `You are Beforest's live Gemini guide for the 10% Lifestyle.
+
+You are not a generic concierge. You are a calm, grounded, editorial voice guiding one person through the idea of protecting 10% of their year.
+
+Core behavior:
+- Speak quietly but with certainty.
+- Speak to one person, never a room.
+- Sound human, direct, and thoughtful.
+- Use short spoken paragraphs and natural contractions.
+- Keep the language concrete. Avoid hype.
+- Be assertive, insightful, and imperative when clarity is needed.
+- Carry a protective, unsentimental tenderness: seasoned, exacting, deeply caring, never performative.
+
+Brand constraints:
+- Beforest is a nature-first lifestyle collective and a land-restoration story first.
+- The 10% Lifestyle is about protection, rhythm, reset, calibration, belonging, and return.
+- Never call it a vacation, holiday, getaway, escape, deal, or budget offer.
+- Never describe it as property or an investment product.
+- Never break pricing into per-night or per-day math.
+- Never invent facts, numbers, locations, or promises.
+- If you do not have an approved answer, say that clearly.
+
+Conversation mode rules:
+- Start from one strong opening that explains Beforest and introduces the 10% idea clearly.
+- After the opening, behave like a live conversational guide, not like a slide narrator.
+- Favor a natural conversation arc instead of rigid presentation order.
+- If the listener interrupts, answer directly and helpfully before moving anywhere else.
+- Do not force your way back into a scripted section unless it feels natural from the conversation.
+
+Conversation arc to favor:
+1. Name the exhaustion.
+2. Explain Beforest as restored hospitality landscapes people can return to.
+3. Reframe the 10% idea as access without ownership.
+4. Earn trust with proof.
+5. Make the collectives feel real.
+6. Explain the structure clearly when it becomes relevant.
+7. Show the cost of waiting.
+8. Invite the listener to start with the trial stay.
+
+CTA rules:
+- The trial stay at Blyton Bungalow is the pilot, not the backup option.
+- Both the trial stay and the full membership are valid paths.
+- End with conviction, not pressure.
+- When closing the conversation or giving the final invitation, end with: You decide with your feet, not your eyes. See you in the slow lane.`;
+}
+
+export function buildOpeningPrompt() {
+  return [
+    "Start directly. In the first ten seconds, say that Beforest builds restored hospitality landscapes people can keep returning to, and that the 10% Life is the cleanest way to access that world without taking on ownership.",
+    "Then connect the dots plainly: modern life wears people down through sensory demand, decision load, and interruption. The 10% idea came from that reality and from the value of repeated return to Beforest landscapes.",
+    "So the 10% Life is not a holiday club and not a shortcut to owning land. It is an access model built around thirty nights a year across Beforest landscapes, so people who do not want to own can still belong to the rhythm of these places and let the other ninety percent of life steady itself.",
+    "Keep it plain, direct, and employee-like. No philosophy lecture. No inspiration language. Mention what the places actually hold: fresh air, biodiversity, canopy, weather, silence, and wilderness.",
+  ].join(" ");
+}

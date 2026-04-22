@@ -1,13 +1,13 @@
-# Beforest LiveKit Client
+# Beforest Gemini Client
 
-A Next.js application for the Beforest editorial voice experience on LiveKit Agents.
+A Next.js application for the Beforest editorial voice experience on direct Gemini Live.
 
 ## Features
 
-- **Real-time conversation** with Gemini via LiveKit Agents
+- **Real-time conversation** with Gemini Live directly from the browser
 - **Full-bleed editorial image stage** driven by agent RPC
-- **Hold-to-talk microphone UX** on top of a LiveKit room session
-- **Live subtitles** fed by room transcription events
+- **Tap-to-speak microphone UX** with direct audio capture and send
+- **Live subtitles** fed by Gemini transcription events
 - **Beforest-specific visual shell** using the existing Arizona fonts and palette
 
 ## Quick Start
@@ -22,7 +22,7 @@ A Next.js application for the Beforest editorial voice experience on LiveKit Age
 
    ```bash
    cp env.example .env.local
-   # Edit .env.local with your LiveKit project values
+   # Edit .env.local with your Gemini API key and optional passcode
    ```
 
 3. **Start development server**:
@@ -37,26 +37,24 @@ A Next.js application for the Beforest editorial voice experience on LiveKit Age
 
 ### Local Development
 
-The app uses `client/app/api/token/route.ts` to mint a development token against your LiveKit project and dispatch the configured agent.
+The app uses `client/app/api/gemini-live-token/route.ts` to mint ephemeral Live API auth tokens for direct browser connections.
 
 ### Required Variables
 
-Set your LiveKit credentials in `.env.local`:
+Set your Gemini credentials in `.env.local`:
 
 ```bash
-LIVEKIT_URL=wss://your-project.livekit.cloud
-LIVEKIT_API_KEY=...
-LIVEKIT_API_SECRET=...
-NEXT_PUBLIC_LIVEKIT_AGENT_NAME=beforest-guide
-NEXT_PUBLIC_LIVEKIT_FRONTEND_IDENTITY=frontend
+GOOGLE_API_KEY=...
+GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+PRESENTATION_PASSCODE=
 ```
 
 ## Usage
 
-1. **Connect** to establish a LiveKit session with the agent
+1. **Connect** to establish a Gemini Live session
 2. **Listen** as the opening 10% narrative begins automatically
 3. **Hold the mic** to interrupt and ask grounded product questions
-4. **Watch the image stage** update when the agent calls `show_curated_image`
+4. **Watch the image stage** update when Gemini uses `show_curated_image`
 5. **Follow the subtitle ribbon** for the latest spoken words
 
 ## Mobile Support
@@ -66,6 +64,6 @@ The layout remains mobile-safe. The current branch focuses on voice, visuals, an
 ## Tech Stack
 
 - **Next.js 15.5.4** with React 19.1.0
-- **LiveKit client SDK** and **LiveKit React components**
+- **Google GenAI JavaScript SDK**
 - **Tailwind CSS 4** for styling
 - **Lucide React** for icons

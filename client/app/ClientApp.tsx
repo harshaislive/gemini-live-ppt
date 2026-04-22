@@ -20,11 +20,9 @@ import {
   selectImage,
 } from "@/lib/beforest-shared";
 import {
-  audioBlobFromMessage,
   bytesToBase64,
+  extractAudioPayloadFromMessage,
   mergeRollingWords,
-  queueAudioChunk,
-  type QueuedAudioChunk,
   takeLastWords,
 } from "@/lib/gemini-live-utils";
 
@@ -119,8 +117,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderState | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const audioQueueRef = useRef<QueuedAudioChunk[]>([]);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const activeSourceNodesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
+  const subtitleTimerIdsRef = useRef<number[]>([]);
+  const nextPlaybackTimeRef = useRef(0);
   const pendingBotTranscriptRef = useRef("");
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
@@ -143,7 +143,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
     if (isMicOpen) {
       return isUserSpeaking
-        ? takeLastWords(userTranscript.trim(), 3) || "Listening..."
+        ? takeLastWords(userTranscript.trim(), 10) || "Listening..."
         : "Listening. Speak, then tap again to send.";
     }
     if (isAwaitingReply) {
@@ -156,10 +156,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return "No question captured. Tap once to speak, then tap again to send.";
     }
     if (isUserSpeaking) {
-      return takeLastWords(userTranscript.trim(), 3) || "Listening...";
+      return takeLastWords(userTranscript.trim(), 10) || "Listening...";
     }
     if (botTtsTranscript.trim()) {
-      return takeLastWords(botTtsTranscript.trim(), 3);
+      return takeLastWords(botTtsTranscript.trim(), 12);
     }
     if (uiError) {
       return uiError;
@@ -214,15 +214,24 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }, [listenerName]);
 
   useEffect(() => {
+    const sourceNodes = activeSourceNodesRef.current;
+
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
+      for (const timerId of subtitleTimerIdsRef.current) {
+        window.clearTimeout(timerId);
       }
-      for (const chunk of audioQueueRef.current) {
-        URL.revokeObjectURL(chunk.url);
-      }
-      audioQueueRef.current = [];
       void sessionRef.current?.close?.();
+      sourceNodes.forEach((source) => {
+        try {
+          source.stop();
+        } catch {
+          // noop
+        }
+      });
+      sourceNodes.clear();
+      if (audioContextRef.current) {
+        void audioContextRef.current.close();
+      }
       if (recorderRef.current) {
         recorderRef.current.stream.getTracks().forEach((track) => track.stop());
         void recorderRef.current.context.close();
@@ -230,42 +239,98 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     };
   }, []);
 
-  const playNextAudioChunk = useCallback(() => {
-    const nextChunk = audioQueueRef.current.shift();
-    if (!nextChunk) {
-      setIsBotSpeaking(false);
-      return;
+  const ensureOutputAudioContext = useCallback(async () => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
+      nextPlaybackTimeRef.current = audioContextRef.current.currentTime;
     }
 
-    const audio = audioRef.current || new Audio();
-    audioRef.current = audio;
-    setBotTtsTranscript(nextChunk.subtitle);
-    audio.src = nextChunk.url;
-    audio.onended = () => {
-      URL.revokeObjectURL(nextChunk.url);
-      playNextAudioChunk();
-    };
-    audio.onerror = () => {
-      URL.revokeObjectURL(nextChunk.url);
-      playNextAudioChunk();
-    };
-    void audio.play().catch(() => {
-      URL.revokeObjectURL(nextChunk.url);
-      playNextAudioChunk();
-    });
+    if (audioContextRef.current.state === "suspended") {
+      await audioContextRef.current.resume();
+    }
+
+    return audioContextRef.current;
   }, []);
 
   const stopPlayback = useCallback(() => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.src = "";
+    subtitleTimerIdsRef.current.forEach((timerId) => window.clearTimeout(timerId));
+    subtitleTimerIdsRef.current = [];
+
+    activeSourceNodesRef.current.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        // noop
+      }
+    });
+    activeSourceNodesRef.current.clear();
+
+    if (audioContextRef.current) {
+      nextPlaybackTimeRef.current = audioContextRef.current.currentTime;
     }
-    for (const chunk of audioQueueRef.current) {
-      URL.revokeObjectURL(chunk.url);
-    }
-    audioQueueRef.current = [];
+
     setIsBotSpeaking(false);
   }, []);
+
+  const createPcmAudioBuffer = useCallback(
+    (context: AudioContext, bytes: Uint8Array, sampleRate: number) => {
+      const samples = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
+      const buffer = context.createBuffer(1, samples.length, sampleRate);
+      const channel = buffer.getChannelData(0);
+      for (let index = 0; index < samples.length; index += 1) {
+        channel[index] = samples[index] / 0x8000;
+      }
+      return buffer;
+    },
+    [],
+  );
+
+  const scheduleAudioPlayback = useCallback(
+    async (message: LiveServerMessage, subtitle: string) => {
+      const payload = extractAudioPayloadFromMessage(message);
+      if (!payload) {
+        return;
+      }
+
+      const context = await ensureOutputAudioContext();
+      let audioBuffer: AudioBuffer;
+
+      if (payload.mimeType.toLowerCase().startsWith("audio/pcm") || payload.mimeType.toLowerCase().startsWith("audio/l16")) {
+        audioBuffer = createPcmAudioBuffer(context, payload.bytes, payload.sampleRate);
+      } else {
+        const arrayBuffer = payload.bytes.buffer.slice(
+          payload.bytes.byteOffset,
+          payload.bytes.byteOffset + payload.bytes.byteLength,
+        ) as ArrayBuffer;
+        audioBuffer = await context.decodeAudioData(arrayBuffer);
+      }
+
+      const source = context.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(context.destination);
+
+      const startAt = Math.max(context.currentTime + 0.02, nextPlaybackTimeRef.current);
+      nextPlaybackTimeRef.current = startAt + audioBuffer.duration;
+
+      const subtitleDelay = Math.max(0, (startAt - context.currentTime) * 1000);
+      const timerId = window.setTimeout(() => {
+        setBotTtsTranscript(subtitle);
+      }, subtitleDelay);
+      subtitleTimerIdsRef.current.push(timerId);
+
+      source.onended = () => {
+        activeSourceNodesRef.current.delete(source);
+        if (!activeSourceNodesRef.current.size) {
+          setIsBotSpeaking(false);
+        }
+      };
+
+      activeSourceNodesRef.current.add(source);
+      setIsBotSpeaking(true);
+      source.start(startAt);
+    },
+    [createPcmAudioBuffer, ensureOutputAudioContext],
+  );
 
   const runToolCalls = useCallback(async (functionCalls: FunctionCall[]) => {
     const responses: FunctionResponse[] = functionCalls.map((call) => {
@@ -335,7 +400,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       const text = message.serverContent.outputTranscription.text.trim();
       if (text) {
         setIsAwaitingReply(false);
-        pendingBotTranscriptRef.current = mergeRollingWords(pendingBotTranscriptRef.current, text, 3);
+        pendingBotTranscriptRef.current = mergeRollingWords(pendingBotTranscriptRef.current, text, 12);
       }
     }
 
@@ -343,20 +408,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       stopPlayback();
     }
 
-    const audioBlob = audioBlobFromMessage(message);
-    if (audioBlob) {
-      const url = URL.createObjectURL(audioBlob);
-      queueAudioChunk(audioQueueRef.current, url, pendingBotTranscriptRef.current);
-      setIsBotSpeaking(true);
-      if (!audioRef.current || audioRef.current.paused) {
-        playNextAudioChunk();
-      }
+    const subtitleSnapshot = pendingBotTranscriptRef.current;
+    if (extractAudioPayloadFromMessage(message)) {
+      await scheduleAudioPlayback(message, subtitleSnapshot);
     }
 
     if (message.serverContent?.turnComplete || message.serverContent?.generationComplete) {
       setIsAwaitingReply(false);
     }
-  }, [playNextAudioChunk, runToolCalls, stopPlayback]);
+  }, [runToolCalls, scheduleAudioPlayback, stopPlayback]);
 
   async function handleAccessSubmit() {
     if (!listenerName.trim()) {

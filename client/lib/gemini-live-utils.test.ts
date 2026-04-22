@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { LiveServerMessage } from "@google/genai";
 import {
-  audioBlobFromMessage,
+  extractAudioPayloadFromMessage,
   mergeRollingWords,
+  parseSampleRateFromMimeType,
   queueAudioChunk,
 } from "./gemini-live-utils";
 
@@ -15,7 +16,7 @@ describe("mergeRollingWords", () => {
 });
 
 describe("audioBlobFromMessage", () => {
-  it("converts pcm mime variants into wav blobs", async () => {
+  it("extracts pcm mime variants with correct sample rate", async () => {
     const message = {
       serverContent: {
         modelTurn: {
@@ -31,9 +32,18 @@ describe("audioBlobFromMessage", () => {
       },
     } as LiveServerMessage;
 
-    const blob = audioBlobFromMessage(message);
-    expect(blob).not.toBeNull();
-    expect(blob?.type).toBe("audio/wav");
+    const payload = extractAudioPayloadFromMessage(message);
+    expect(payload).not.toBeNull();
+    expect(payload?.mimeType).toBe("audio/pcm;rate=24000");
+    expect(payload?.sampleRate).toBe(24000);
+  });
+});
+
+describe("parseSampleRateFromMimeType", () => {
+  it("reads sample rate parameters from mime strings", () => {
+    expect(parseSampleRateFromMimeType("audio/pcm;rate=24000")).toBe(24000);
+    expect(parseSampleRateFromMimeType("audio/l16;sample_rate=16000")).toBe(16000);
+    expect(parseSampleRateFromMimeType("audio/pcm")).toBe(24000);
   });
 });
 

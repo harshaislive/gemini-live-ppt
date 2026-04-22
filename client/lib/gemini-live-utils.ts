@@ -5,6 +5,12 @@ export type QueuedAudioChunk = {
   subtitle: string;
 };
 
+export type GeminiAudioPayload = {
+  bytes: Uint8Array;
+  mimeType: string;
+  sampleRate: number;
+};
+
 export function toWords(text: string) {
   return text.trim().split(/\s+/).filter(Boolean);
 }
@@ -90,7 +96,12 @@ function isPcmMimeType(mimeType: string) {
   return lower.startsWith("audio/pcm") || lower.startsWith("audio/l16");
 }
 
-export function audioBlobFromMessage(message: LiveServerMessage) {
+export function parseSampleRateFromMimeType(mimeType: string) {
+  const match = mimeType.match(/rate=(\d+)/i) || mimeType.match(/sample[_-]?rate=(\d+)/i);
+  return match ? Number(match[1]) : 24000;
+}
+
+export function extractAudioPayloadFromMessage(message: LiveServerMessage): GeminiAudioPayload | null {
   const inlinePart = message.serverContent?.modelTurn?.parts?.find(
     (part) => part.inlineData?.data && part.inlineData?.mimeType?.startsWith("audio/"),
   );
@@ -101,12 +112,29 @@ export function audioBlobFromMessage(message: LiveServerMessage) {
     return null;
   }
 
-  const bytes = base64ToBytes(data);
-  if (isPcmMimeType(mimeType)) {
-    return pcmToWav(bytes);
+  return {
+    bytes: base64ToBytes(data),
+    mimeType,
+    sampleRate: isPcmMimeType(mimeType) ? parseSampleRateFromMimeType(mimeType) : 24000,
+  };
+}
+
+export function audioBlobFromMessage(message: LiveServerMessage) {
+  const payload = extractAudioPayloadFromMessage(message);
+  if (!payload) {
+    return null;
   }
 
-  return new Blob([bytes], { type: mimeType });
+  if (isPcmMimeType(payload.mimeType)) {
+    return pcmToWav(payload.bytes, payload.sampleRate);
+  }
+
+  const arrayBuffer = payload.bytes.buffer.slice(
+    payload.bytes.byteOffset,
+    payload.bytes.byteOffset + payload.bytes.byteLength,
+  ) as ArrayBuffer;
+
+  return new Blob([arrayBuffer], { type: payload.mimeType });
 }
 
 export function queueAudioChunk(

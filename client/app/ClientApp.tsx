@@ -14,6 +14,13 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { INITIAL_VISUAL } from "./beforest";
 import {
+  buildSectionTurnPrompt,
+  FIRST_SECTION_ID,
+  getNextSectionId,
+  getPresentationSection,
+  type PresentationSectionId,
+} from "./presentationAgenda";
+import {
   type BeforestVisual,
   type KnowledgeChunk,
   searchKnowledge,
@@ -139,7 +146,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [userTranscript, setUserTranscript] = useState("");
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
   const [promptModal, setPromptModal] = useState<PromptModal | null>(null);
-  const [didShowFitQuestion, setDidShowFitQuestion] = useState(false);
+  const [currentSectionId, setCurrentSectionId] = useState<PresentationSectionId>(FIRST_SECTION_ID);
+  const [completedSections, setCompletedSections] = useState<PresentationSectionId[]>([]);
+  const [fallbackModalSections, setFallbackModalSections] = useState<PresentationSectionId[]>([]);
   const [uiError, setUiError] = useState<string | null>(null);
 
   const sessionRef = useRef<Session | null>(null);
@@ -152,6 +161,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const pendingBotTranscriptRef = useRef("");
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
+  const currentSectionIdRef = useRef<PresentationSectionId>(FIRST_SECTION_ID);
+  const completedSectionsRef = useRef<PresentationSectionId[]>([]);
+  const isAdvancingSectionRef = useRef(false);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
@@ -212,21 +224,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     return "Begin the guided walkthrough when you are ready.";
   }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAccessReady, isAwaitingReply, isBusy, isGuidePrepared, isLive, isMicOpen, isPreloading, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
 
-  const guideStage = useMemo(() => {
-    if (visual.id === "opening-forest-road" || visual.id === "quote-erosion") {
-      return "1 / Name the pressure";
-    }
-    if (visual.id === "protected-time-canopy" || visual.id === "collective-landscape") {
-      return "2 / Reframe the return";
-    }
-    if (visual.id === "proof-restoration" || visual.id === "structure-clarity") {
-      return "3 / Explain the model";
-    }
-    if (visual.id === "waiting-cost" || visual.id === "trial-stay" || visual.id === "art-of-return-hero") {
-      return "4 / Choose the first step";
-    }
-    return "Live guide";
-  }, [visual.id]);
+  const guideStage = useMemo(() => getPresentationSection(currentSectionId).stageLabel, [currentSectionId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -265,6 +263,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
     window.localStorage.setItem(LISTENER_NAME_STORAGE_KEY, trimmedName);
   }, [listenerName]);
+
+  useEffect(() => {
+    currentSectionIdRef.current = currentSectionId;
+  }, [currentSectionId]);
+
+  useEffect(() => {
+    completedSectionsRef.current = completedSections;
+  }, [completedSections]);
 
   useEffect(() => {
     const sourceNodes = activeSourceNodesRef.current;
@@ -427,23 +433,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     ambientBed.gain.gain.setTargetAtTime(isBotSpeaking ? 0.045 : 0.095, context.currentTime, 0.8);
   }, [isBotSpeaking]);
 
-  const sendTextTurn = useCallback((text: string) => {
-    if (!sessionRef.current || !isSessionReady) {
-      return;
-    }
-
-    stopPlayback();
-    setUiError(null);
-    setUserTranscript(text);
-    setBotTtsTranscript("");
-    pendingBotTranscriptRef.current = "";
-    setIsAwaitingReply(true);
-    sessionRef.current.sendClientContent({
-      turns: [{ role: "user", parts: [{ text }] }],
-      turnComplete: true,
-    });
-  }, [isSessionReady, stopPlayback]);
-
   const showPromptModal = useCallback((modal: PromptModal) => {
     stopPlayback();
     setIsAwaitingReply(false);
@@ -451,6 +440,71 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     pendingBotTranscriptRef.current = "";
     setPromptModal(modal);
   }, [stopPlayback]);
+
+  const setSectionVisual = useCallback((sectionId: PresentationSectionId) => {
+    const section = getPresentationSection(sectionId);
+    const sectionVisual = imagesRef.current.find((image) => image.id === section.visualId);
+    if (sectionVisual) {
+      setVisual(sectionVisual);
+    }
+  }, []);
+
+  const markSectionCompleted = useCallback((sectionId: PresentationSectionId) => {
+    setCompletedSections((previous) => {
+      if (previous.includes(sectionId)) {
+        return previous;
+      }
+      const next = [...previous, sectionId];
+      completedSectionsRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const sendPresenterSection = useCallback((
+    sectionId: PresentationSectionId,
+    listenerChoice?: string,
+    session: Session | null = sessionRef.current,
+  ) => {
+    if (!session) {
+      return;
+    }
+
+    const section = getPresentationSection(sectionId);
+    currentSectionIdRef.current = sectionId;
+    setCurrentSectionId(sectionId);
+    setSectionVisual(sectionId);
+    stopPlayback();
+    setPromptModal(null);
+    setUiError(null);
+    setBotTtsTranscript("");
+    pendingBotTranscriptRef.current = "";
+    setIsAwaitingReply(true);
+
+    session.sendClientContent({
+      turns: [{
+        role: "user",
+        parts: [{
+          text: buildSectionTurnPrompt({
+            section,
+            listenerChoice,
+            completedSections: completedSectionsRef.current,
+          }),
+        }],
+      }],
+      turnComplete: true,
+    });
+  }, [setSectionVisual, stopPlayback]);
+
+  const advanceToNextSection = useCallback((listenerChoice?: string) => {
+    const currentSection = getPresentationSection(currentSectionIdRef.current);
+    const nextSectionId = getNextSectionId(currentSection.id);
+    if (!nextSectionId) {
+      return;
+    }
+
+    markSectionCompleted(currentSection.id);
+    sendPresenterSection(nextSectionId, listenerChoice);
+  }, [markSectionCompleted, sendPresenterSection]);
 
   const createPcmAudioBuffer = useCallback(
     (context: AudioContext, bytes: Uint8Array, sampleRate: number) => {
@@ -626,8 +680,18 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     if (message.serverContent?.turnComplete || message.serverContent?.generationComplete) {
       setIsAwaitingReply(false);
+      const currentSection = getPresentationSection(currentSectionIdRef.current);
+      if (!currentSection.modalGoal && currentSection.nextSection && !isAdvancingSectionRef.current) {
+        isAdvancingSectionRef.current = true;
+        window.setTimeout(() => {
+          isAdvancingSectionRef.current = false;
+          if (!promptModal && !recorderRef.current) {
+            advanceToNextSection();
+          }
+        }, 900);
+      }
     }
-  }, [runToolCalls, scheduleAudioPlayback, stopPlayback]);
+  }, [advanceToNextSection, promptModal, runToolCalls, scheduleAudioPlayback, stopPlayback]);
 
   async function handleAccessSubmit(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -778,9 +842,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     try {
       const outputContext = await ensureOutputAudioContext();
       startAmbientBed(outputContext);
-      const context = await ensurePresentationContext();
+      await ensurePresentationContext();
       const token = await ensureGeminiToken();
-      setDidShowFitQuestion(false);
+      setCompletedSections([]);
+      completedSectionsRef.current = [];
+      setFallbackModalSections([]);
+      currentSectionIdRef.current = FIRST_SECTION_ID;
+      setCurrentSectionId(FIRST_SECTION_ID);
       const ai = new GoogleGenAI({ apiKey: token.name, apiVersion: "v1alpha" });
 
       const toolDeclarations: FunctionDeclaration[] = [
@@ -872,10 +940,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       });
 
       sessionRef.current = liveSession;
-      liveSession.sendClientContent({
-        turns: [{ role: "user", parts: [{ text: context.openingPrompt }] }],
-        turnComplete: true,
-      });
+      sendPresenterSection(FIRST_SECTION_ID, undefined, liveSession);
     } catch (error) {
       stopAmbientBed();
       setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
@@ -884,27 +949,62 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }
 
   useEffect(() => {
-    if (!isSessionReady || didShowFitQuestion || promptModal || isMicOpen || isAwaitingReply) {
+    const section = getPresentationSection(currentSectionId);
+    const modalGoal = section.modalGoal;
+    if (
+      !isSessionReady ||
+      !modalGoal ||
+      fallbackModalSections.includes(currentSectionId) ||
+      promptModal ||
+      isMicOpen ||
+      isAwaitingReply
+    ) {
       return;
     }
 
     const timerId = window.setTimeout(() => {
+      const fallbackOptions = section.id === "access_model"
+        ? [
+            "Access without ownership",
+            "I need a serious reset",
+            "I want to understand 30 nights",
+            "Blyton trial stay first",
+          ]
+        : section.id === "proof_limited"
+          ? [
+              "The place has to feel real",
+              "Family use matters most",
+              "30 nights must be practical",
+              "Trying Blyton first",
+            ]
+          : [
+              "Take the trial stay",
+              "Receive more updates",
+              "Understand membership",
+              "Not right now",
+            ];
+
       showPromptModal({
-        id: "fit-question",
-        question: "What are you looking for from silence right now?",
-        context:
-          "This helps the guide choose whether to focus on exhaustion, the 30-night rhythm, or the trial stay at Blyton Bungalow.",
-        suggestedAnswers: [
-          "I need a serious reset soon",
-          "I want to understand the membership",
-          "I am mostly curious for later",
-        ],
+        id: `fallback-${section.id}`,
+        question: section.id === "trial_stay_close"
+          ? "What feels like the right next step?"
+          : "What should I focus on next?",
+        context: modalGoal,
+        suggestedAnswers: fallbackOptions,
       });
-      setDidShowFitQuestion(true);
+      setFallbackModalSections((previous) => previous.includes(section.id) ? previous : [...previous, section.id]);
     }, 26000);
 
     return () => window.clearTimeout(timerId);
-  }, [didShowFitQuestion, isAwaitingReply, isMicOpen, isSessionReady, promptModal, showPromptModal]);
+  }, [
+    currentSectionId,
+    fallbackModalSections,
+    isAwaitingReply,
+    isMicOpen,
+    isSessionReady,
+    promptModal,
+    showPromptModal,
+  ]);
 
   async function handleOpenMic() {
     const micCapabilityError = getMicCapabilityError();
@@ -1069,7 +1169,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     const question = promptModal.question;
     setPromptModal(null);
-    sendTextTurn(`Question asked by the guide: ${question}\nListener answer: ${trimmedAnswer}`);
+    const currentSection = getPresentationSection(currentSectionIdRef.current);
+    const nextSectionId = getNextSectionId(currentSection.id) || currentSection.id;
+    markSectionCompleted(currentSection.id);
+    sendPresenterSection(
+      nextSectionId,
+      `Question asked by the guide: ${question}\nListener selected: ${trimmedAnswer}`,
+    );
   }
 
   const actionLabel = isBusy || isMicBusy
@@ -1258,8 +1364,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                     type="button"
                     className="beforest-question-skip"
                     onClick={() => {
+                      const currentSection = getPresentationSection(currentSectionIdRef.current);
+                      const nextSectionId = getNextSectionId(currentSection.id) || currentSection.id;
                       setPromptModal(null);
-                      sendTextTurn("The listener skipped this question. Continue the agenda without forcing it.");
+                      markSectionCompleted(currentSection.id);
+                      sendPresenterSection(nextSectionId, "The listener skipped this question.");
                     }}
                   >
                     Skip

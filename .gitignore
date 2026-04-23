@@ -23,6 +23,7 @@ node_modules
 # misc
 .DS_Store
 *.pem
+10 percent .mp4
 
 # debug
 npm-debug.log*

@@ -79,6 +79,7 @@ export async function loadCuratedImages() {
     id: string;
     title: string;
     path: string;
+    video_url?: string;
     hook: string;
     note: string;
     alt?: string;
@@ -90,6 +91,7 @@ export async function loadCuratedImages() {
     id: item.id,
     title: item.title,
     imageUrl: item.path,
+    videoUrl: item.video_url,
     hook: item.hook,
     note: item.note,
     alt: item.alt || item.title,

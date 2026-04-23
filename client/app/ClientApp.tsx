@@ -12,7 +12,7 @@ import {
 import { LoaderCircle, Mic, Send } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { INITIAL_VISUAL, PROMPT_SUGGESTIONS } from "./beforest";
+import { INITIAL_VISUAL } from "./beforest";
 import {
   type BeforestVisual,
   type KnowledgeChunk,
@@ -48,6 +48,15 @@ type GeminiToken = {
 
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
+const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence";
+const TRIAL_STAY_URL = "https://hospitality.beforest.co";
+
+type PromptModal = {
+  id: string;
+  question: string;
+  context: string;
+  suggestedAnswers: string[];
+};
 
 type RecorderState = {
   stream: MediaStream;
@@ -103,6 +112,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [botTtsTranscript, setBotTtsTranscript] = useState("");
   const [userTranscript, setUserTranscript] = useState("");
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
+  const [promptModal, setPromptModal] = useState<PromptModal | null>(null);
+  const [promptAnswer, setPromptAnswer] = useState("");
   const [uiError, setUiError] = useState<string | null>(null);
 
   const sessionRef = useRef<Session | null>(null);
@@ -280,6 +291,23 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsBotSpeaking(false);
   }, []);
 
+  const sendTextTurn = useCallback((text: string) => {
+    if (!sessionRef.current || !isSessionReady) {
+      return;
+    }
+
+    stopPlayback();
+    setUiError(null);
+    setUserTranscript(text);
+    setBotTtsTranscript("");
+    pendingBotTranscriptRef.current = "";
+    setIsAwaitingReply(true);
+    sessionRef.current.sendClientContent({
+      turns: [{ role: "user", parts: [{ text }] }],
+      turnComplete: true,
+    });
+  }, [isSessionReady, stopPlayback]);
+
   const createPcmAudioBuffer = useCallback(
     (context: AudioContext, bytes: Uint8Array, sampleRate: number) => {
       const samples = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
@@ -374,6 +402,38 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             selected: image,
             guidance:
               "The frontend visual has been updated. Continue naturally without mentioning the tool.",
+          },
+        };
+      }
+
+      if (name === "ask_listener_question") {
+        const responseId = call.id || crypto.randomUUID();
+        const question = String(call.args?.question || "").trim();
+        const context = String(call.args?.context || "").trim();
+        const suggestedAnswers = Array.isArray(call.args?.suggested_answers)
+          ? call.args.suggested_answers
+              .map((answer) => String(answer || "").trim())
+              .filter(Boolean)
+              .slice(0, 3)
+          : [];
+
+        if (question) {
+          setPromptModal({
+            id: responseId,
+            question,
+            context,
+            suggestedAnswers,
+          });
+          setPromptAnswer("");
+        }
+
+        return {
+          id: responseId,
+          name,
+          response: {
+            shown: Boolean(question),
+            guidance:
+              "The listener is seeing one focused question. Pause for their answer before advancing the agenda.",
           },
         };
       }
@@ -528,7 +588,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         {
           name: "show_curated_image",
           description:
-            "Select an approved Beforest image for the current topic and update the frontend visual state.",
+            "Select an approved Beforest visual for the current topic and update the frontend video/image state.",
           parametersJsonSchema: {
             type: "object",
             properties: {
@@ -537,6 +597,23 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
               image_id: { type: "string" },
             },
             required: ["topic"],
+          },
+        },
+        {
+          name: "ask_listener_question",
+          description:
+            "Show one calm modal question to understand the listener's readiness, objections, or preferred next step. Use sparingly between agenda sections.",
+          parametersJsonSchema: {
+            type: "object",
+            properties: {
+              question: { type: "string" },
+              context: { type: "string" },
+              suggested_answers: {
+                type: "array",
+                items: { type: "string" },
+              },
+            },
+            required: ["question"],
           },
         },
       ];
@@ -717,21 +794,16 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     void handleOpenMic();
   }
 
-  function handlePromptSuggestion(prompt: string) {
-    if (!sessionRef.current || !isSessionReady || isMicOpen || isAwaitingReply) {
+  function handlePromptSubmit(answer: string) {
+    const trimmedAnswer = answer.trim();
+    if (!promptModal || !trimmedAnswer || isMicOpen || isAwaitingReply) {
       return;
     }
 
-    stopPlayback();
-    setUiError(null);
-    setUserTranscript(prompt);
-    setBotTtsTranscript("");
-    pendingBotTranscriptRef.current = "";
-    setIsAwaitingReply(true);
-    sessionRef.current.sendClientContent({
-      turns: [{ role: "user", parts: [{ text: prompt }] }],
-      turnComplete: true,
-    });
+    const question = promptModal.question;
+    setPromptModal(null);
+    setPromptAnswer("");
+    sendTextTurn(`Question asked by the guide: ${question}\nListener answer: ${trimmedAnswer}`);
   }
 
   const actionLabel = isBusy || isMicBusy
@@ -742,7 +814,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         : "Speak"
       : "Begin live walkthrough";
 
-  const showTrialCta = visual.id === "trial-stay";
+  const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
   const micHint = isLive
     ? isMicOpen
       ? "Listening now. Send when your question is complete."
@@ -760,16 +832,30 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       <div className="beforest-noise" aria-hidden="true" />
 
       <section className="beforest-story" aria-label="Beforest live walkthrough">
-        <Image
-          key={visual.id || visual.imageUrl}
-          src={visual.imageUrl}
-          alt={visual.alt}
-          fill
-          priority
-          unoptimized
-          className="beforest-story__image"
-          sizes={isMobile ? "100vw" : "100vw"}
-        />
+        {visual.videoUrl ? (
+          <video
+            key={`${visual.id}-${visual.videoUrl}`}
+            className="beforest-story__image beforest-story__video"
+            poster={visual.imageUrl}
+            autoPlay
+            muted
+            loop
+            playsInline
+          >
+            <source src={visual.videoUrl} type="video/mp4" />
+          </video>
+        ) : (
+          <Image
+            key={visual.id || visual.imageUrl}
+            src={visual.imageUrl}
+            alt={visual.alt}
+            fill
+            priority
+            unoptimized
+            className="beforest-story__image"
+            sizes={isMobile ? "100vw" : "100vw"}
+          />
+        )}
 
         <div className="beforest-story__scrim" aria-hidden="true" />
 
@@ -778,12 +864,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             <p className="beforest-heading__kicker">{guideStage}</p>
             <h1 className="beforest-heading__title">{visual.hook}</h1>
           </header>
-
-          <aside className="beforest-guide-card" aria-label="Current walkthrough context">
-            <p className="beforest-guide-card__label">Now showing</p>
-            <h2>{visual.title}</h2>
-            <p>{visual.note}</p>
-          </aside>
 
           <div className="beforest-bottom-ui">
             {uiError ? (
@@ -864,36 +944,75 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
               </form>
             ) : null}
 
-            {isLive && !isMicOpen && !isAwaitingReply ? (
-              <div className="beforest-prompt-row" aria-label="Suggested questions">
-                {PROMPT_SUGGESTIONS.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    className="beforest-prompt-chip"
-                    onClick={() => handlePromptSuggestion(prompt)}
-                  >
-                    {prompt}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
-            {showTrialCta ? (
+            {showDecisionCta ? (
               <div className="beforest-cta-card">
-                <p className="beforest-cta-eyebrow">The First Real Step</p>
-                <h2 className="beforest-cta-title">Start your trial stay at Blyton Bungalow.</h2>
+                <p className="beforest-cta-eyebrow">Choose the right next step</p>
+                <h2 className="beforest-cta-title">The land will explain this more clearly than a pitch.</h2>
                 <a
                   className="beforest-cta-button"
-                  href="https://hospitality.beforest.co"
+                  href={TRIAL_STAY_URL}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  Start your trial
+                  Take a trial stay
+                </a>
+                <a
+                  className="beforest-cta-button secondary"
+                  href={FOUNDING_SILENCE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Subscribe for updates
                 </a>
               </div>
             ) : null}
           </div>
+
+          {promptModal ? (
+            <div className="beforest-question-backdrop" role="presentation">
+              <section className="beforest-question-modal" role="dialog" aria-modal="true" aria-labelledby="beforest-question-title">
+                <p className="beforest-question-eyebrow">A useful pause</p>
+                <h2 id="beforest-question-title">{promptModal.question}</h2>
+                {promptModal.context ? <p className="beforest-question-context">{promptModal.context}</p> : null}
+                {promptModal.suggestedAnswers.length ? (
+                  <div className="beforest-question-options">
+                    {promptModal.suggestedAnswers.map((answer) => (
+                      <button
+                        key={answer}
+                        type="button"
+                        onClick={() => handlePromptSubmit(answer)}
+                      >
+                        {answer}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <textarea
+                  className="beforest-question-input"
+                  value={promptAnswer}
+                  onChange={(event) => setPromptAnswer(event.target.value)}
+                  placeholder="Or answer in your own words"
+                  rows={3}
+                />
+                <div className="beforest-question-actions">
+                  <button type="button" className="beforest-question-submit" onClick={() => handlePromptSubmit(promptAnswer)}>
+                    Continue
+                  </button>
+                  <button
+                    type="button"
+                    className="beforest-question-skip"
+                    onClick={() => {
+                      setPromptModal(null);
+                      setPromptAnswer("");
+                      sendTextTurn("The listener skipped this question. Continue the agenda without forcing it.");
+                    }}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </section>
+            </div>
+          ) : null}
 
           <div className="beforest-screen-frame" aria-hidden="true" />
         </div>

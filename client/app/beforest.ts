@@ -2,6 +2,7 @@ export type BeforestVisual = {
   id: string;
   title: string;
   imageUrl: string;
+  videoUrl?: string;
   hook: string;
   note: string;
   alt: string;

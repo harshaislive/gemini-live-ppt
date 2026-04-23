@@ -1106,7 +1106,6 @@ a:focus-visible {
 }
 
 .beforest-question-options button,
-.beforest-question-submit,
 .beforest-question-skip {
   min-height: 2.75rem;
   border-radius: 999px;
@@ -1130,36 +1129,11 @@ a:focus-visible {
   border-color: rgba(216, 203, 179, 0.32);
 }
 
-.beforest-question-input {
-  width: 100%;
-  margin-top: 14px;
-  padding: 13px 14px;
-  resize: vertical;
-  border: 1px solid rgba(216, 203, 179, 0.18);
-  border-radius: 18px;
-  background: rgba(11, 8, 6, 0.38);
-  color: #f7f0e3;
-  line-height: 1.45;
-  outline: none;
-}
-
-.beforest-question-input::placeholder {
-  color: rgba(243, 236, 222, 0.48);
-}
-
 .beforest-question-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
-}
-
-.beforest-question-submit {
-  flex: 1;
-  padding: 0 18px;
-  border: 1px solid rgba(219, 193, 159, 0.6);
-  background: linear-gradient(180deg, #dbc19f, #c69b72);
-  color: #1b150f;
 }
 
 .beforest-question-skip {

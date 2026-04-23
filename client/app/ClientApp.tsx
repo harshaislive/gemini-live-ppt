@@ -115,7 +115,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [userTranscript, setUserTranscript] = useState("");
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
   const [promptModal, setPromptModal] = useState<PromptModal | null>(null);
-  const [promptAnswer, setPromptAnswer] = useState("");
   const [didShowFitQuestion, setDidShowFitQuestion] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
 
@@ -424,26 +423,25 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           ? call.args.suggested_answers
               .map((answer) => String(answer || "").trim())
               .filter(Boolean)
-              .slice(0, 3)
+              .slice(0, 4)
           : [];
 
-        if (question) {
+        if (question && suggestedAnswers.length >= 2) {
           setPromptModal({
             id: responseId,
             question,
             context,
             suggestedAnswers,
           });
-          setPromptAnswer("");
         }
 
         return {
           id: responseId,
           name,
           response: {
-            shown: Boolean(question),
+            shown: Boolean(question && suggestedAnswers.length >= 2),
             guidance:
-              "The listener is seeing one focused question. Pause for their answer before advancing the agenda.",
+              "The listener is seeing one option-only question. Pause for their choice before advancing the agenda.",
           },
         };
       }
@@ -688,10 +686,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
               context: { type: "string" },
               suggested_answers: {
                 type: "array",
+                minItems: 2,
+                maxItems: 4,
                 items: { type: "string" },
               },
             },
-            required: ["question"],
+            required: ["question", "suggested_answers"],
           },
         },
       ];
@@ -762,7 +762,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           "I am mostly curious for later",
         ],
       });
-      setPromptAnswer("");
       setDidShowFitQuestion(true);
     }, 26000);
 
@@ -904,7 +903,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     const question = promptModal.question;
     setPromptModal(null);
-    setPromptAnswer("");
     sendTextTurn(`Question asked by the guide: ${question}\nListener answer: ${trimmedAnswer}`);
   }
 
@@ -1078,36 +1076,23 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                 <p className="beforest-question-eyebrow">A useful pause</p>
                 <h2 id="beforest-question-title">{promptModal.question}</h2>
                 {promptModal.context ? <p className="beforest-question-context">{promptModal.context}</p> : null}
-                {promptModal.suggestedAnswers.length ? (
-                  <div className="beforest-question-options">
-                    {promptModal.suggestedAnswers.map((answer) => (
-                      <button
-                        key={answer}
-                        type="button"
-                        onClick={() => handlePromptSubmit(answer)}
-                      >
-                        {answer}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <textarea
-                  className="beforest-question-input"
-                  value={promptAnswer}
-                  onChange={(event) => setPromptAnswer(event.target.value)}
-                  placeholder="Or answer in your own words"
-                  rows={3}
-                />
+                <div className="beforest-question-options">
+                  {promptModal.suggestedAnswers.map((answer) => (
+                    <button
+                      key={answer}
+                      type="button"
+                      onClick={() => handlePromptSubmit(answer)}
+                    >
+                      {answer}
+                    </button>
+                  ))}
+                </div>
                 <div className="beforest-question-actions">
-                  <button type="button" className="beforest-question-submit" onClick={() => handlePromptSubmit(promptAnswer)}>
-                    Continue
-                  </button>
                   <button
                     type="button"
                     className="beforest-question-skip"
                     onClick={() => {
                       setPromptModal(null);
-                      setPromptAnswer("");
                       sendTextTurn("The listener skipped this question. Continue the agenda without forcing it.");
                     }}
                   >

@@ -9,10 +9,10 @@ import {
   type LiveServerMessage,
   type Session,
 } from "@google/genai";
-import { LoaderCircle, Mic, MicOff } from "lucide-react";
+import { LoaderCircle, Mic, Send } from "lucide-react";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { INITIAL_VISUAL } from "./beforest";
+import { INITIAL_VISUAL, PROMPT_SUGGESTIONS } from "./beforest";
 import {
   type BeforestVisual,
   type KnowledgeChunk,
@@ -55,8 +55,8 @@ type RecorderState = {
   source: MediaStreamAudioSourceNode;
   processor: ScriptProcessorNode;
   gain: GainNode;
-  chunks: Float32Array[];
   sampleRate: number;
+  hasSpeech: boolean;
 };
 
 function getMicCapabilityError() {
@@ -75,17 +75,6 @@ function getMicCapabilityError() {
   return null;
 }
 
-function mergeFloat32Chunks(chunks: Float32Array[]) {
-  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Float32Array(totalLength);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
-}
-
 function float32ToPcm16(input: Float32Array) {
   const pcm = new Int16Array(input.length);
   for (let index = 0; index < input.length; index += 1) {
@@ -98,6 +87,7 @@ function float32ToPcm16(input: Float32Array) {
 export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [accessState, setAccessState] = useState<AccessState | null>(null);
   const [listenerName, setListenerName] = useState("");
+  const [hasConfirmedListener, setHasConfirmedListener] = useState(false);
   const [passcode, setPasscode] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [presentationContext, setPresentationContext] = useState<PresentationContext | null>(null);
@@ -125,12 +115,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
 
-  const isAccessReady = Boolean(accessState?.authorized && listenerName.trim());
-  const shouldShowNameForm = Boolean(accessState && !listenerName.trim());
+  const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
+  const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
   const shouldShowAccessForm = Boolean(accessState && (!accessState.authorized || shouldShowNameForm));
   const isBusy = isStarting;
   const isMicBusy = isMicTransitioning;
   const isLive = isSessionReady;
+  const canUsePrimaryAction = isAccessReady && !isBusy && !isMicBusy;
 
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
@@ -153,7 +144,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return "Opening Gemini Live...";
     }
     if (didMissUserTurn) {
-      return "No question captured. Tap once to speak, then tap again to send.";
+      return "No voice detected. Tap speak, ask one clear question, then send.";
     }
     if (isUserSpeaking) {
       return takeLastWords(userTranscript.trim(), 10) || "Listening...";
@@ -173,8 +164,24 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (hasEverConnected) {
       return "Tap the mic to reconnect.";
     }
-    return "Tap the mic to begin the live walkthrough.";
+    return "Begin the guided walkthrough when you are ready.";
   }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAwaitingReply, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
+
+  const guideStage = useMemo(() => {
+    if (visual.id === "opening-forest-road" || visual.id === "quote-erosion") {
+      return "1 / Name the pressure";
+    }
+    if (visual.id === "protected-time-canopy" || visual.id === "collective-landscape") {
+      return "2 / Reframe the return";
+    }
+    if (visual.id === "proof-restoration" || visual.id === "structure-clarity") {
+      return "3 / Explain the model";
+    }
+    if (visual.id === "waiting-cost" || visual.id === "trial-stay" || visual.id === "art-of-return-hero") {
+      return "4 / Choose the first step";
+    }
+    return "Live guide";
+  }, [visual.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -198,6 +205,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY)?.trim();
     if (storedName) {
       setListenerName(storedName);
+      setHasConfirmedListener(true);
     }
   }, []);
 
@@ -418,18 +426,21 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
   }, [runToolCalls, scheduleAudioPlayback, stopPlayback]);
 
-  async function handleAccessSubmit() {
+  async function handleAccessSubmit(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     if (!listenerName.trim()) {
       setUiError("Please enter your name before you begin.");
       return;
     }
     if (accessState?.authorized) {
+      setHasConfirmedListener(true);
       setUiError(null);
       return;
     }
     if (!accessState?.requiresPasscode) {
       setUiError(null);
       setAccessState({ requiresPasscode: false, authorized: true });
+      setHasConfirmedListener(true);
       return;
     }
     setIsUnlocking(true);
@@ -445,6 +456,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         throw new Error(String(data.error || "Unable to unlock the presentation."));
       }
       setAccessState({ requiresPasscode: Boolean(data.requiresPasscode), authorized: true });
+      setHasConfirmedListener(true);
       setPasscode("");
     } catch (error) {
       setUiError(error instanceof Error ? error.message : "Unable to unlock the presentation.");
@@ -471,6 +483,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   async function handleStart() {
     if (isBusy || !isAccessReady || isSessionReady) {
+      if (!isAccessReady) {
+        setUiError("Add your name first so the guide can open the walkthrough properly.");
+      }
       return;
     }
 
@@ -600,25 +615,40 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       const gain = context.createGain();
       gain.gain.value = 0;
 
-      const chunks: Float32Array[] = [];
-      processor.onaudioprocess = (event) => {
-        chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
-        setIsUserSpeaking(true);
-      };
-
-      source.connect(processor);
-      processor.connect(gain);
-      gain.connect(context.destination);
-
       recorderRef.current = {
         stream,
         context,
         source,
         processor,
         gain,
-        chunks,
         sampleRate: context.sampleRate,
+        hasSpeech: false,
       };
+
+      processor.onaudioprocess = (event) => {
+        const input = new Float32Array(event.inputBuffer.getChannelData(0));
+        let energy = 0;
+        for (const sample of input) {
+          energy += sample * sample;
+        }
+        const isSpeaking = Math.sqrt(energy / input.length) > 0.015;
+        if (isSpeaking) {
+          recorderRef.current!.hasSpeech = true;
+        }
+        setIsUserSpeaking(isSpeaking);
+
+        const pcm16 = float32ToPcm16(input);
+        sessionRef.current?.sendRealtimeInput({
+          audio: {
+            data: bytesToBase64(new Uint8Array(pcm16.buffer)),
+            mimeType: `audio/pcm;rate=${context.sampleRate}`,
+          },
+        });
+      };
+
+      source.connect(processor);
+      processor.connect(gain);
+      gain.connect(context.destination);
 
       sessionRef.current.sendRealtimeInput({ activityStart: {} });
       setIsMicOpen(true);
@@ -654,21 +684,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       recorder.stream.getTracks().forEach((track) => track.stop());
       await recorder.context.close();
 
-      const merged = mergeFloat32Chunks(recorder.chunks);
-      if (!merged.length) {
+      if (!recorder.hasSpeech) {
         setDidMissUserTurn(true);
         setIsAwaitingReply(false);
         sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
         return;
       }
 
-      const pcm16 = float32ToPcm16(merged);
-      sessionRef.current?.sendRealtimeInput({
-        audio: {
-          data: bytesToBase64(new Uint8Array(pcm16.buffer)),
-          mimeType: "audio/pcm",
-        },
-      });
       sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
     } catch (error) {
       setIsAwaitingReply(false);
@@ -694,23 +716,40 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     void handleOpenMic();
   }
 
+  function handlePromptSuggestion(prompt: string) {
+    if (!sessionRef.current || !isSessionReady || isMicOpen || isAwaitingReply) {
+      return;
+    }
+
+    stopPlayback();
+    setUiError(null);
+    setUserTranscript(prompt);
+    setBotTtsTranscript("");
+    pendingBotTranscriptRef.current = "";
+    setIsAwaitingReply(true);
+    sessionRef.current.sendClientContent({
+      turns: [{ role: "user", parts: [{ text: prompt }] }],
+      turnComplete: true,
+    });
+  }
+
   const actionLabel = isBusy || isMicBusy
     ? "Connecting"
     : isLive
       ? isMicOpen
-        ? "Tap again to send"
-        : "Tap to speak"
+        ? "Send question"
+        : "Speak"
       : "Begin live walkthrough";
 
   const showTrialCta = visual.id === "trial-stay";
   const micHint = isLive
     ? isMicOpen
-      ? "Listening now. Tap again to send."
+      ? "Listening now. Send when your question is complete."
       : isAwaitingReply
         ? "Sending your question to Gemini."
-        : "Tap once to speak. Tap again to send."
+        : "Interrupt any time. Speak naturally, then send."
     : isAccessReady
-      ? "Tap to begin. Once connected, tap once to speak and tap again to send."
+      ? "Start the narrated walkthrough. You can interrupt with voice or a prompt."
       : accessState?.requiresPasscode
         ? "Add your name and passcode to open the presentation."
         : "Add your name to open the presentation.";
@@ -735,8 +774,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
         <div className="beforest-story__overlay">
           <header className="beforest-heading" aria-live="polite">
+            <p className="beforest-heading__kicker">{guideStage}</p>
             <h1 className="beforest-heading__title">{visual.hook}</h1>
           </header>
+
+          <aside className="beforest-guide-card" aria-label="Current walkthrough context">
+            <p className="beforest-guide-card__label">Now showing</p>
+            <h2>{visual.title}</h2>
+            <p>{visual.note}</p>
+          </aside>
 
           <div className="beforest-bottom-ui">
             {uiError ? (
@@ -752,39 +798,43 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
               {displayedSubtitle}
             </p>
 
-            <button
-              type="button"
-              className={[
-                "beforest-mic-button",
-                isMicOpen ? "is-open" : "",
-                isBusy || isMicBusy ? "is-busy" : "",
-                isBotSpeaking ? "is-speaking" : "",
-              ]
-                .filter(Boolean)
-                .join(" ")}
-              onClick={handlePrimaryAction}
-              disabled={isBusy || isMicBusy}
-              aria-label={actionLabel}
-              aria-pressed={isLive ? isMicOpen : undefined}
-            >
-              <span className="beforest-mic-button__ring" aria-hidden="true" />
-              <span className="beforest-mic-button__surface">
-                {isBusy || isMicBusy ? (
-                  <LoaderCircle size={24} className="spin" />
-                ) : isLive && !isMicOpen ? (
-                  <MicOff size={24} />
-                ) : (
-                  <Mic size={24} />
-                )}
-              </span>
-            </button>
+            {!shouldShowAccessForm ? (
+              <button
+                type="button"
+                className={[
+                  "beforest-mic-button",
+                  isLive ? "is-live" : "",
+                  isMicOpen ? "is-open" : "",
+                  isBusy || isMicBusy ? "is-busy" : "",
+                  isBotSpeaking ? "is-speaking" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onClick={handlePrimaryAction}
+                disabled={!canUsePrimaryAction}
+                aria-label={actionLabel}
+                aria-pressed={isLive ? isMicOpen : undefined}
+              >
+                <span className="beforest-mic-button__ring" aria-hidden="true" />
+                <span className="beforest-mic-button__surface">
+                  {isBusy || isMicBusy ? (
+                    <LoaderCircle size={24} className="spin" />
+                  ) : isLive && isMicOpen ? (
+                    <Send size={24} />
+                  ) : (
+                    <Mic size={24} />
+                  )}
+                </span>
+                <span className="beforest-action-label">{actionLabel}</span>
+              </button>
+            ) : null}
 
             <p className="beforest-mic-hint" aria-live="polite">
               {micHint}
             </p>
 
             {shouldShowAccessForm ? (
-              <div className="beforest-access-card">
+              <form className="beforest-access-card" onSubmit={handleAccessSubmit}>
                 <input
                   className="beforest-access-input"
                   type="text"
@@ -804,13 +854,27 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                   />
                 ) : null}
                 <button
-                  type="button"
+                  type="submit"
                   className="beforest-access-button"
-                  onClick={handleAccessSubmit}
                   disabled={isUnlocking}
                 >
                   {isUnlocking ? "Opening..." : "Open presentation"}
                 </button>
+              </form>
+            ) : null}
+
+            {isLive && !isMicOpen && !isAwaitingReply ? (
+              <div className="beforest-prompt-row" aria-label="Suggested questions">
+                {PROMPT_SUGGESTIONS.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    className="beforest-prompt-chip"
+                    onClick={() => handlePromptSuggestion(prompt)}
+                  >
+                    {prompt}
+                  </button>
+                ))}
               </div>
             ) : null}
 

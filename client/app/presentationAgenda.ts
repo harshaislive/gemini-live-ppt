@@ -110,12 +110,116 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
 
 export const FIRST_SECTION_ID: PresentationSectionId = "opening_definition";
 
+export type PresentationSegmentId =
+  | "opening_to_fit"
+  | "desire_to_proof"
+  | "membership_to_trial"
+  | "decision_close";
+
+export type PresentationSegment = {
+  id: PresentationSegmentId;
+  stageLabel: string;
+  visualId: string;
+  sectionIds: PresentationSectionId[];
+  gateSectionId: PresentationSectionId;
+};
+
+export const PRESENTATION_SEGMENTS: PresentationSegment[] = [
+  {
+    id: "opening_to_fit",
+    stageLabel: "1 / Beforest and 10%",
+    visualId: "opening-forest-road",
+    sectionIds: ["opening_definition", "access_model"],
+    gateSectionId: "access_model",
+  },
+  {
+    id: "desire_to_proof",
+    stageLabel: "2 / Why this feels different",
+    visualId: "collective-landscape",
+    sectionIds: ["desire_scene", "proof_limited"],
+    gateSectionId: "proof_limited",
+  },
+  {
+    id: "membership_to_trial",
+    stageLabel: "3 / Trial stay first",
+    visualId: "structure-clarity",
+    sectionIds: ["membership_clarity", "trial_stay_close"],
+    gateSectionId: "trial_stay_close",
+  },
+  {
+    id: "decision_close",
+    stageLabel: "4 / Choose the first step",
+    visualId: "art-of-return-hero",
+    sectionIds: ["decision_question"],
+    gateSectionId: "decision_question",
+  },
+];
+
+export const FIRST_SEGMENT_ID: PresentationSegmentId = "opening_to_fit";
+
 export function getPresentationSection(sectionId: PresentationSectionId) {
   return PRESENTATION_AGENDA.find((section) => section.id === sectionId) || PRESENTATION_AGENDA[0];
 }
 
 export function getNextSectionId(sectionId: PresentationSectionId) {
   return getPresentationSection(sectionId).nextSection;
+}
+
+export function getPresentationSegment(segmentId: PresentationSegmentId) {
+  return PRESENTATION_SEGMENTS.find((segment) => segment.id === segmentId) || PRESENTATION_SEGMENTS[0];
+}
+
+export function getNextSegmentAfterGate(sectionId: PresentationSectionId) {
+  if (sectionId === "access_model") {
+    return getPresentationSegment("desire_to_proof");
+  }
+  if (sectionId === "proof_limited") {
+    return getPresentationSegment("membership_to_trial");
+  }
+  if (sectionId === "trial_stay_close") {
+    return getPresentationSegment("decision_close");
+  }
+  return undefined;
+}
+
+export function buildSegmentTurnPrompt(params: {
+  segment: PresentationSegment;
+  listenerChoice?: string;
+  completedSections: PresentationSectionId[];
+}) {
+  const completed = params.completedSections.length
+    ? params.completedSections.join(", ")
+    : "none yet";
+  const choiceLine = params.listenerChoice
+    ? `\nListener context from the last modal: ${params.listenerChoice}`
+    : "";
+  const sections = params.segment.sectionIds.map((sectionId) => getPresentationSection(sectionId));
+  const gate = getPresentationSection(params.segment.gateSectionId);
+  const modalLine = gate.modalGoal
+    ? `At the end of this act, call ask_listener_question with 2-4 concise options. Modal goal: ${gate.modalGoal}`
+    : "Do not call ask_listener_question in this act. Close cleanly.";
+
+  return [
+    "Presenter runtime state:",
+    `- Current act: ${params.segment.id}`,
+    `- Visible stage label: ${params.segment.stageLabel}`,
+    `- Completed sections: ${completed}`,
+    choiceLine.trim(),
+    "",
+    "Act instructions:",
+    ...sections.flatMap((section, index) => [
+      `${index + 1}. ${section.goal}`,
+      `   ${section.instruction}`,
+    ]),
+    "",
+    "Pacing rules:",
+    "- Speak as one continuous human presentation act, not separate slides.",
+    "- Do not stop between the listed sections. Bridge naturally from one idea to the next.",
+    "- Use show_curated_image only at natural visual shifts, and do not mention the tool.",
+    "- Keep the full act under 75 seconds unless the listener has just asked for detail.",
+    `- ${modalLine}`,
+    "- If you call a modal, stop speaking immediately and wait for the listener choice.",
+  ].filter(Boolean).join("\n");
 }
 
 export function buildSectionTurnPrompt(params: {

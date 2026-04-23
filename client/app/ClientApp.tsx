@@ -14,10 +14,13 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { INITIAL_VISUAL } from "./beforest";
 import {
-  buildSectionTurnPrompt,
   FIRST_SECTION_ID,
-  getNextSectionId,
+  FIRST_SEGMENT_ID,
+  buildSegmentTurnPrompt,
+  getNextSegmentAfterGate,
+  getPresentationSegment,
   getPresentationSection,
+  type PresentationSegmentId,
   type PresentationSectionId,
 } from "./presentationAgenda";
 import {
@@ -146,6 +149,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [userTranscript, setUserTranscript] = useState("");
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
   const [promptModal, setPromptModal] = useState<PromptModal | null>(null);
+  const [currentSegmentId, setCurrentSegmentId] = useState<PresentationSegmentId>(FIRST_SEGMENT_ID);
   const [currentSectionId, setCurrentSectionId] = useState<PresentationSectionId>(FIRST_SECTION_ID);
   const [completedSections, setCompletedSections] = useState<PresentationSectionId[]>([]);
   const [fallbackModalSections, setFallbackModalSections] = useState<PresentationSectionId[]>([]);
@@ -161,9 +165,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const pendingBotTranscriptRef = useRef("");
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
+  const currentSegmentIdRef = useRef<PresentationSegmentId>(FIRST_SEGMENT_ID);
   const currentSectionIdRef = useRef<PresentationSectionId>(FIRST_SECTION_ID);
   const completedSectionsRef = useRef<PresentationSectionId[]>([]);
-  const isAdvancingSectionRef = useRef(false);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
@@ -189,7 +193,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         : "Ask your question. I will send it when you pause.";
     }
     if (isAwaitingReply) {
-      return "Answering your question...";
+      return isMicOpen ? "Answering..." : "";
     }
     if (isLive && !hasEverConnected) {
       return "Opening Gemini Live...";
@@ -224,7 +228,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     return "Begin the guided walkthrough when you are ready.";
   }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAccessReady, isAwaitingReply, isBusy, isGuidePrepared, isLive, isMicOpen, isPreloading, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
 
-  const guideStage = useMemo(() => getPresentationSection(currentSectionId).stageLabel, [currentSectionId]);
+  const guideStage = useMemo(() => getPresentationSegment(currentSegmentId).stageLabel, [currentSegmentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -267,6 +271,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   useEffect(() => {
     currentSectionIdRef.current = currentSectionId;
   }, [currentSectionId]);
+
+  useEffect(() => {
+    currentSegmentIdRef.current = currentSegmentId;
+  }, [currentSegmentId]);
 
   useEffect(() => {
     completedSectionsRef.current = completedSections;
@@ -449,6 +457,16 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
   }, []);
 
+  const setSegmentVisual = useCallback((segmentId: PresentationSegmentId) => {
+    const segment = getPresentationSegment(segmentId);
+    const segmentVisual = imagesRef.current.find((image) => image.id === segment.visualId);
+    if (segmentVisual) {
+      setVisual(segmentVisual);
+      return;
+    }
+    setSectionVisual(segment.gateSectionId);
+  }, [setSectionVisual]);
+
   const markSectionCompleted = useCallback((sectionId: PresentationSectionId) => {
     setCompletedSections((previous) => {
       if (previous.includes(sectionId)) {
@@ -460,8 +478,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     });
   }, []);
 
-  const sendPresenterSection = useCallback((
-    sectionId: PresentationSectionId,
+  const sendPresenterSegment = useCallback((
+    segmentId: PresentationSegmentId,
     listenerChoice?: string,
     session: Session | null = sessionRef.current,
   ) => {
@@ -469,10 +487,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
 
-    const section = getPresentationSection(sectionId);
-    currentSectionIdRef.current = sectionId;
-    setCurrentSectionId(sectionId);
-    setSectionVisual(sectionId);
+    const segment = getPresentationSegment(segmentId);
+    currentSegmentIdRef.current = segmentId;
+    currentSectionIdRef.current = segment.gateSectionId;
+    setCurrentSegmentId(segmentId);
+    setCurrentSectionId(segment.gateSectionId);
+    setSegmentVisual(segmentId);
     stopPlayback();
     setPromptModal(null);
     setUiError(null);
@@ -484,8 +504,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       turns: [{
         role: "user",
         parts: [{
-          text: buildSectionTurnPrompt({
-            section,
+          text: buildSegmentTurnPrompt({
+            segment,
             listenerChoice,
             completedSections: completedSectionsRef.current,
           }),
@@ -493,18 +513,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       }],
       turnComplete: true,
     });
-  }, [setSectionVisual, stopPlayback]);
-
-  const advanceToNextSection = useCallback((listenerChoice?: string) => {
-    const currentSection = getPresentationSection(currentSectionIdRef.current);
-    const nextSectionId = getNextSectionId(currentSection.id);
-    if (!nextSectionId) {
-      return;
-    }
-
-    markSectionCompleted(currentSection.id);
-    sendPresenterSection(nextSectionId, listenerChoice);
-  }, [markSectionCompleted, sendPresenterSection]);
+  }, [setSegmentVisual, stopPlayback]);
 
   const createPcmAudioBuffer = useCallback(
     (context: AudioContext, bytes: Uint8Array, sampleRate: number) => {
@@ -680,18 +689,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     if (message.serverContent?.turnComplete || message.serverContent?.generationComplete) {
       setIsAwaitingReply(false);
-      const currentSection = getPresentationSection(currentSectionIdRef.current);
-      if (!currentSection.modalGoal && currentSection.nextSection && !isAdvancingSectionRef.current) {
-        isAdvancingSectionRef.current = true;
-        window.setTimeout(() => {
-          isAdvancingSectionRef.current = false;
-          if (!promptModal && !recorderRef.current) {
-            advanceToNextSection();
-          }
-        }, 900);
-      }
     }
-  }, [advanceToNextSection, promptModal, runToolCalls, scheduleAudioPlayback, stopPlayback]);
+  }, [runToolCalls, scheduleAudioPlayback, stopPlayback]);
 
   async function handleAccessSubmit(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -847,8 +846,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setCompletedSections([]);
       completedSectionsRef.current = [];
       setFallbackModalSections([]);
-      currentSectionIdRef.current = FIRST_SECTION_ID;
-      setCurrentSectionId(FIRST_SECTION_ID);
+      currentSegmentIdRef.current = FIRST_SEGMENT_ID;
+      currentSectionIdRef.current = getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId;
+      setCurrentSegmentId(FIRST_SEGMENT_ID);
+      setCurrentSectionId(getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId);
       const ai = new GoogleGenAI({ apiKey: token.name, apiVersion: "v1alpha" });
 
       const toolDeclarations: FunctionDeclaration[] = [
@@ -940,7 +941,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       });
 
       sessionRef.current = liveSession;
-      sendPresenterSection(FIRST_SECTION_ID, undefined, liveSession);
+      sendPresenterSegment(FIRST_SEGMENT_ID, undefined, liveSession);
     } catch (error) {
       stopAmbientBed();
       setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
@@ -993,7 +994,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         suggestedAnswers: fallbackOptions,
       });
       setFallbackModalSections((previous) => previous.includes(section.id) ? previous : [...previous, section.id]);
-    }, 26000);
+    }, 4000);
 
     return () => window.clearTimeout(timerId);
   }, [
@@ -1170,10 +1171,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const question = promptModal.question;
     setPromptModal(null);
     const currentSection = getPresentationSection(currentSectionIdRef.current);
-    const nextSectionId = getNextSectionId(currentSection.id) || currentSection.id;
+    const nextSegment = getNextSegmentAfterGate(currentSection.id);
     markSectionCompleted(currentSection.id);
-    sendPresenterSection(
-      nextSectionId,
+    if (!nextSegment) {
+      return;
+    }
+    sendPresenterSegment(
+      nextSegment.id,
       `Question asked by the guide: ${question}\nListener selected: ${trimmedAnswer}`,
     );
   }
@@ -1365,10 +1369,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                     className="beforest-question-skip"
                     onClick={() => {
                       const currentSection = getPresentationSection(currentSectionIdRef.current);
-                      const nextSectionId = getNextSectionId(currentSection.id) || currentSection.id;
+                      const nextSegment = getNextSegmentAfterGate(currentSection.id);
                       setPromptModal(null);
                       markSectionCompleted(currentSection.id);
-                      sendPresenterSection(nextSectionId, "The listener skipped this question.");
+                      if (nextSegment) {
+                        sendPresenterSegment(nextSegment.id, "The listener skipped this question.");
+                      }
                     }}
                   >
                     Skip

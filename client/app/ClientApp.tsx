@@ -498,6 +498,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsAwaitingReply(false);
 
     try {
+      await ensureOutputAudioContext();
       const context = await ensurePresentationContext();
       const tokenResponse = await fetch("/api/gemini-live-token", {
         method: "POST",

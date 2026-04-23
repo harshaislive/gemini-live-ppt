@@ -124,6 +124,21 @@ export type PresentationSegment = {
   gateSectionId: PresentationSectionId;
 };
 
+export type PlannerStrategy =
+  | "continue"
+  | "compress"
+  | "clarify"
+  | "trial_ready"
+  | "updates_path";
+
+export type PlannerDecision = {
+  targetSegmentId: PresentationSegmentId;
+  confidence: number;
+  strategy: PlannerStrategy;
+  presenterBrief: string;
+  reason: string;
+};
+
 export const PRESENTATION_SEGMENTS: PresentationSegment[] = [
   {
     id: "opening_to_fit",
@@ -182,9 +197,59 @@ export function getNextSegmentAfterGate(sectionId: PresentationSectionId) {
   return undefined;
 }
 
+export function getAllowedNextSegments(params: {
+  currentSegmentId: PresentationSegmentId;
+  gateSectionId: PresentationSectionId;
+}) {
+  if (params.currentSegmentId === "opening_to_fit") {
+    return ["desire_to_proof", "membership_to_trial"] as PresentationSegmentId[];
+  }
+  if (params.currentSegmentId === "desire_to_proof") {
+    return ["membership_to_trial", "decision_close"] as PresentationSegmentId[];
+  }
+  if (params.currentSegmentId === "membership_to_trial") {
+    return ["decision_close"] as PresentationSegmentId[];
+  }
+  return [] as PresentationSegmentId[];
+}
+
+export function coercePlannerDecision(params: {
+  currentSegmentId: PresentationSegmentId;
+  gateSectionId: PresentationSectionId;
+  decision?: Partial<PlannerDecision> | null;
+}) {
+  const strategies: PlannerStrategy[] = ["continue", "compress", "clarify", "trial_ready", "updates_path"];
+  const allowed = getAllowedNextSegments(params);
+  const fallback = getNextSegmentAfterGate(params.gateSectionId);
+  const fallbackId = fallback?.id || allowed[0] || params.currentSegmentId;
+  const requestedTarget = params.decision?.targetSegmentId;
+  const targetSegmentId = requestedTarget && allowed.includes(requestedTarget)
+    ? requestedTarget
+    : fallbackId;
+  const confidence = typeof params.decision?.confidence === "number"
+    ? Math.max(0, Math.min(1, params.decision.confidence))
+    : 0.5;
+  const strategy = params.decision?.strategy && strategies.includes(params.decision.strategy)
+    ? params.decision.strategy
+    : "continue";
+  const presenterBrief = params.decision?.presenterBrief?.trim()
+    || "Continue the guided presentation naturally and keep momentum toward the Blyton trial stay.";
+  const reason = params.decision?.reason?.trim()
+    || "Fallback route selected by the app's agenda policy.";
+
+  return {
+    targetSegmentId,
+    confidence,
+    strategy,
+    presenterBrief,
+    reason,
+  } satisfies PlannerDecision;
+}
+
 export function buildSegmentTurnPrompt(params: {
   segment: PresentationSegment;
   listenerChoice?: string;
+  supervisorBrief?: string;
   completedSections: PresentationSectionId[];
 }) {
   const completed = params.completedSections.length
@@ -195,6 +260,9 @@ export function buildSegmentTurnPrompt(params: {
     : "";
   const sections = params.segment.sectionIds.map((sectionId) => getPresentationSection(sectionId));
   const gate = getPresentationSection(params.segment.gateSectionId);
+  const supervisorLine = params.supervisorBrief
+    ? `\nSupervisor routing brief: ${params.supervisorBrief}`
+    : "";
   const modalLine = gate.modalGoal
     ? `At the end of this act, call ask_listener_question with 2-4 concise options. Modal goal: ${gate.modalGoal}`
     : "Do not call ask_listener_question in this act. Close cleanly.";
@@ -205,6 +273,7 @@ export function buildSegmentTurnPrompt(params: {
     `- Visible stage label: ${params.segment.stageLabel}`,
     `- Completed sections: ${completed}`,
     choiceLine.trim(),
+    supervisorLine.trim(),
     "",
     "Act instructions:",
     ...sections.flatMap((section, index) => [

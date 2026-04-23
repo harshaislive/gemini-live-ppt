@@ -17,9 +17,11 @@ import {
   FIRST_SECTION_ID,
   FIRST_SEGMENT_ID,
   buildSegmentTurnPrompt,
+  coercePlannerDecision,
   getNextSegmentAfterGate,
   getPresentationSegment,
   getPresentationSection,
+  type PlannerDecision,
   type PresentationSegmentId,
   type PresentationSectionId,
 } from "./presentationAgenda";
@@ -54,6 +56,15 @@ type PresentationContext = {
 
 type GeminiToken = {
   name: string;
+};
+
+type PresentationPlanRequest = {
+  currentSegmentId: PresentationSegmentId;
+  gateSectionId: PresentationSectionId;
+  completedSections: PresentationSectionId[];
+  question: string;
+  listenerChoice: string;
+  elapsedSeconds: number;
 };
 
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
@@ -168,6 +179,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const currentSegmentIdRef = useRef<PresentationSegmentId>(FIRST_SEGMENT_ID);
   const currentSectionIdRef = useRef<PresentationSectionId>(FIRST_SECTION_ID);
   const completedSectionsRef = useRef<PresentationSectionId[]>([]);
+  const presentationStartedAtRef = useRef<number | null>(null);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
@@ -481,6 +493,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const sendPresenterSegment = useCallback((
     segmentId: PresentationSegmentId,
     listenerChoice?: string,
+    supervisorBrief?: string,
     session: Session | null = sessionRef.current,
   ) => {
     if (!session) {
@@ -507,6 +520,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           text: buildSegmentTurnPrompt({
             segment,
             listenerChoice,
+            supervisorBrief,
             completedSections: completedSectionsRef.current,
           }),
         }],
@@ -514,6 +528,33 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       turnComplete: true,
     });
   }, [setSegmentVisual, stopPlayback]);
+
+  const getSupervisorPlan = useCallback(async (request: PresentationPlanRequest) => {
+    const fallback = coercePlannerDecision({
+      currentSegmentId: request.currentSegmentId,
+      gateSectionId: request.gateSectionId,
+      decision: null,
+    });
+
+    try {
+      const response = await fetch("/api/presentation-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const decision = (await response.json()) as Partial<PlannerDecision>;
+      return coercePlannerDecision({
+        currentSegmentId: request.currentSegmentId,
+        gateSectionId: request.gateSectionId,
+        decision,
+      });
+    } catch {
+      return fallback;
+    }
+  }, []);
 
   const createPcmAudioBuffer = useCallback(
     (context: AudioContext, bytes: Uint8Array, sampleRate: number) => {
@@ -850,6 +891,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       currentSectionIdRef.current = getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId;
       setCurrentSegmentId(FIRST_SEGMENT_ID);
       setCurrentSectionId(getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId);
+      presentationStartedAtRef.current = Date.now();
       const ai = new GoogleGenAI({ apiKey: token.name, apiVersion: "v1alpha" });
 
       const toolDeclarations: FunctionDeclaration[] = [
@@ -941,7 +983,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       });
 
       sessionRef.current = liveSession;
-      sendPresenterSegment(FIRST_SEGMENT_ID, undefined, liveSession);
+      sendPresenterSegment(FIRST_SEGMENT_ID, undefined, undefined, liveSession);
     } catch (error) {
       stopAmbientBed();
       setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
@@ -1162,7 +1204,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     void handleOpenMic();
   }
 
-  function handlePromptSubmit(answer: string) {
+  async function handlePromptSubmit(answer: string) {
     const trimmedAnswer = answer.trim();
     if (!promptModal || !trimmedAnswer || isMicOpen || isAwaitingReply) {
       return;
@@ -1171,14 +1213,24 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const question = promptModal.question;
     setPromptModal(null);
     const currentSection = getPresentationSection(currentSectionIdRef.current);
-    const nextSegment = getNextSegmentAfterGate(currentSection.id);
+    const currentSegmentId = currentSegmentIdRef.current;
     markSectionCompleted(currentSection.id);
-    if (!nextSegment) {
-      return;
-    }
+    setIsAwaitingReply(true);
+    const elapsedSeconds = presentationStartedAtRef.current
+      ? Math.round((Date.now() - presentationStartedAtRef.current) / 1000)
+      : 0;
+    const plan = await getSupervisorPlan({
+      currentSegmentId,
+      gateSectionId: currentSection.id,
+      completedSections: completedSectionsRef.current,
+      question,
+      listenerChoice: trimmedAnswer,
+      elapsedSeconds,
+    });
     sendPresenterSegment(
-      nextSegment.id,
+      plan.targetSegmentId,
       `Question asked by the guide: ${question}\nListener selected: ${trimmedAnswer}`,
+      plan.presenterBrief,
     );
   }
 
@@ -1373,7 +1425,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                       setPromptModal(null);
                       markSectionCompleted(currentSection.id);
                       if (nextSegment) {
-                        sendPresenterSegment(nextSegment.id, "The listener skipped this question.");
+                        sendPresenterSegment(
+                          nextSegment.id,
+                          "The listener skipped this question.",
+                          "Continue without forcing the skipped answer. Keep momentum and avoid mentioning the skip.",
+                        );
                       }
                     }}
                   >

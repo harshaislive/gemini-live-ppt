@@ -100,6 +100,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [passcode, setPasscode] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [presentationContext, setPresentationContext] = useState<PresentationContext | null>(null);
+  const [geminiToken, setGeminiToken] = useState<GeminiToken | null>(null);
+  const [isPreloading, setIsPreloading] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [isSessionReady, setIsSessionReady] = useState(false);
   const [isMicTransitioning, setIsMicTransitioning] = useState(false);
@@ -114,6 +116,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
   const [promptModal, setPromptModal] = useState<PromptModal | null>(null);
   const [promptAnswer, setPromptAnswer] = useState("");
+  const [didShowFitQuestion, setDidShowFitQuestion] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
 
   const sessionRef = useRef<Session | null>(null);
@@ -133,6 +136,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const isMicBusy = isMicTransitioning;
   const isLive = isSessionReady;
   const canUsePrimaryAction = isAccessReady && !isBusy && !isMicBusy;
+  const isGuidePrepared = Boolean(presentationContext && geminiToken);
 
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
@@ -169,6 +173,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (isBusy) {
       return "Connecting to Gemini Live...";
     }
+    if (isAccessReady && isPreloading) {
+      return "Preparing the live guide...";
+    }
+    if (isAccessReady && isGuidePrepared) {
+      return "Ready. Start when you want the guide to begin.";
+    }
     if (isLive) {
       return "";
     }
@@ -176,7 +186,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return "Tap the mic to reconnect.";
     }
     return "Begin the guided walkthrough when you are ready.";
-  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAwaitingReply, isBusy, isLive, isMicOpen, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
+  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAccessReady, isAwaitingReply, isBusy, isGuidePrepared, isLive, isMicOpen, isPreloading, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
 
   const guideStage = useMemo(() => {
     if (visual.id === "opening-forest-road" || visual.id === "quote-erosion") {
@@ -494,6 +504,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
     if (accessState?.authorized) {
       setHasConfirmedListener(true);
+      setGeminiToken(null);
       setUiError(null);
       return;
     }
@@ -501,6 +512,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setUiError(null);
       setAccessState({ requiresPasscode: false, authorized: true });
       setHasConfirmedListener(true);
+      setGeminiToken(null);
       return;
     }
     setIsUnlocking(true);
@@ -517,6 +529,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       }
       setAccessState({ requiresPasscode: Boolean(data.requiresPasscode), authorized: true });
       setHasConfirmedListener(true);
+      setGeminiToken(null);
       setPasscode("");
     } catch (error) {
       setUiError(error instanceof Error ? error.message : "Unable to unlock the presentation.");
@@ -525,7 +538,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
   }
 
-  async function ensurePresentationContext() {
+  const ensurePresentationContext = useCallback(async () => {
     if (presentationContext) {
       return presentationContext;
     }
@@ -539,7 +552,79 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     imagesRef.current = data.images;
     knowledgeRef.current = data.knowledgeChunks;
     return data;
-  }
+  }, [presentationContext]);
+
+  const ensureGeminiToken = useCallback(async () => {
+    if (geminiToken) {
+      return geminiToken;
+    }
+
+    const tokenResponse = await fetch("/api/gemini-live-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listenerName }),
+    });
+    if (!tokenResponse.ok) {
+      throw new Error(await tokenResponse.text());
+    }
+    const token = (await tokenResponse.json()) as GeminiToken;
+    setGeminiToken(token);
+    return token;
+  }, [geminiToken, listenerName]);
+
+  useEffect(() => {
+    if (!isAccessReady || presentationContext || isSessionReady) {
+      return;
+    }
+
+    let cancelled = false;
+    async function preloadPresentation() {
+      setIsPreloading(true);
+      try {
+        await ensurePresentationContext();
+      } catch (error) {
+        if (!cancelled) {
+          setUiError(error instanceof Error ? error.message : "Unable to prepare the presentation.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsPreloading(false);
+        }
+      }
+    }
+
+    void preloadPresentation();
+    return () => {
+      cancelled = true;
+    };
+  }, [ensurePresentationContext, isAccessReady, isSessionReady, presentationContext]);
+
+  useEffect(() => {
+    if (!isAccessReady || geminiToken || isSessionReady) {
+      return;
+    }
+
+    let cancelled = false;
+    async function preloadToken() {
+      setIsPreloading(true);
+      try {
+        await ensureGeminiToken();
+      } catch (error) {
+        if (!cancelled) {
+          setUiError(error instanceof Error ? error.message : "Unable to prepare Gemini Live.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsPreloading(false);
+        }
+      }
+    }
+
+    void preloadToken();
+    return () => {
+      cancelled = true;
+    };
+  }, [ensureGeminiToken, geminiToken, isAccessReady, isSessionReady]);
 
   async function handleStart() {
     if (isBusy || !isAccessReady || isSessionReady) {
@@ -560,15 +645,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     try {
       await ensureOutputAudioContext();
       const context = await ensurePresentationContext();
-      const tokenResponse = await fetch("/api/gemini-live-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listenerName }),
-      });
-      if (!tokenResponse.ok) {
-        throw new Error(await tokenResponse.text());
-      }
-      const token = (await tokenResponse.json()) as GeminiToken;
+      const token = await ensureGeminiToken();
+      setDidShowFitQuestion(false);
       const ai = new GoogleGenAI({ apiKey: token.name, apiVersion: "v1alpha" });
 
       const toolDeclarations: FunctionDeclaration[] = [
@@ -666,6 +744,30 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setIsStarting(false);
     }
   }
+
+  useEffect(() => {
+    if (!isSessionReady || didShowFitQuestion || promptModal || isMicOpen || isAwaitingReply) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setPromptModal({
+        id: "fit-question",
+        question: "What are you looking for from silence right now?",
+        context:
+          "This helps the guide choose whether to focus on exhaustion, the 30-night rhythm, or the trial stay at Blyton Bungalow.",
+        suggestedAnswers: [
+          "I need a serious reset soon",
+          "I want to understand the membership",
+          "I am mostly curious for later",
+        ],
+      });
+      setPromptAnswer("");
+      setDidShowFitQuestion(true);
+    }, 26000);
+
+    return () => window.clearTimeout(timerId);
+  }, [didShowFitQuestion, isAwaitingReply, isMicOpen, isSessionReady, promptModal]);
 
   async function handleOpenMic() {
     const micCapabilityError = getMicCapabilityError();
@@ -822,7 +924,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         ? "Sending your question to Gemini."
         : "Interrupt any time. Speak naturally, then send."
     : isAccessReady
-      ? "Start the narrated walkthrough. You can interrupt with voice or a prompt."
+      ? isGuidePrepared
+        ? "The guide is ready. Start the walkthrough, then interrupt with voice when needed."
+        : "Preparing the guide so the walkthrough starts faster."
       : accessState?.requiresPasscode
         ? "Add your name and passcode to open the presentation."
         : "Add your name to open the presentation.";

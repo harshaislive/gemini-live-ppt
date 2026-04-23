@@ -48,6 +48,7 @@ type GeminiToken = {
 
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
+const DEFAULT_VOICE_ID = "Gacrux";
 const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence";
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 
@@ -66,6 +67,12 @@ type RecorderState = {
   gain: GainNode;
   sampleRate: number;
   hasSpeech: boolean;
+};
+
+type AmbientBedState = {
+  gain: GainNode;
+  noiseSource: AudioBufferSourceNode;
+  chirpTimerIds: number[];
 };
 
 function getMicCapabilityError() {
@@ -91,6 +98,21 @@ function float32ToPcm16(input: Float32Array) {
     pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
   }
   return pcm;
+}
+
+function createRainNoiseBuffer(context: AudioContext) {
+  const durationSeconds = 2;
+  const buffer = context.createBuffer(1, context.sampleRate * durationSeconds, context.sampleRate);
+  const channel = buffer.getChannelData(0);
+  let previous = 0;
+
+  for (let index = 0; index < channel.length; index += 1) {
+    const white = Math.random() * 2 - 1;
+    previous = previous * 0.86 + white * 0.14;
+    channel[index] = previous * 0.34;
+  }
+
+  return buffer;
 }
 
 export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
@@ -121,6 +143,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderState | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const ambientBedRef = useRef<AmbientBedState | null>(null);
   const activeSourceNodesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const subtitleTimerIdsRef = useRef<number[]>([]);
   const nextPlaybackTimeRef = useRef(0);
@@ -257,6 +280,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         }
       });
       sourceNodes.clear();
+      if (ambientBedRef.current) {
+        ambientBedRef.current.chirpTimerIds.forEach((timerId) => window.clearTimeout(timerId));
+        try {
+          ambientBedRef.current.noiseSource.stop();
+        } catch {
+          // noop
+        }
+        ambientBedRef.current = null;
+      }
       if (audioContextRef.current) {
         void audioContextRef.current.close();
       }
@@ -299,6 +331,93 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     setIsBotSpeaking(false);
   }, []);
+
+  const stopAmbientBed = useCallback(() => {
+    const ambientBed = ambientBedRef.current;
+    ambientBedRef.current = null;
+    if (!ambientBed) {
+      return;
+    }
+
+    ambientBed.chirpTimerIds.forEach((timerId) => window.clearTimeout(timerId));
+    try {
+      ambientBed.noiseSource.stop();
+    } catch {
+      // noop
+    }
+    ambientBed.gain.disconnect();
+  }, []);
+
+  const startAmbientBed = useCallback((context: AudioContext) => {
+    if (ambientBedRef.current) {
+      return;
+    }
+
+    const gain = context.createGain();
+    gain.gain.value = 0.08;
+    gain.connect(context.destination);
+
+    const rainFilter = context.createBiquadFilter();
+    rainFilter.type = "lowpass";
+    rainFilter.frequency.value = 1500;
+    rainFilter.Q.value = 0.55;
+
+    const noiseSource = context.createBufferSource();
+    noiseSource.buffer = createRainNoiseBuffer(context);
+    noiseSource.loop = true;
+    noiseSource.connect(rainFilter);
+    rainFilter.connect(gain);
+    noiseSource.start();
+
+    const chirpTimerIds: number[] = [];
+    const scheduleChirp = () => {
+      const timerId = window.setTimeout(() => {
+        if (!ambientBedRef.current || context.state === "closed") {
+          return;
+        }
+
+        const now = context.currentTime;
+        const oscillator = context.createOscillator();
+        const chirpGain = context.createGain();
+        const startFrequency = 1800 + Math.random() * 900;
+        const endFrequency = startFrequency + 700 + Math.random() * 900;
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(startFrequency, now);
+        oscillator.frequency.exponentialRampToValueAtTime(endFrequency, now + 0.18);
+
+        chirpGain.gain.setValueAtTime(0.0001, now);
+        chirpGain.gain.exponentialRampToValueAtTime(0.028, now + 0.04);
+        chirpGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+
+        oscillator.connect(chirpGain);
+        chirpGain.connect(gain);
+        oscillator.start(now);
+        oscillator.stop(now + 0.28);
+
+        oscillator.onended = () => {
+          oscillator.disconnect();
+          chirpGain.disconnect();
+        };
+
+        scheduleChirp();
+      }, 3600 + Math.random() * 6200);
+      chirpTimerIds.push(timerId);
+    };
+
+    ambientBedRef.current = { gain, noiseSource, chirpTimerIds };
+    scheduleChirp();
+  }, []);
+
+  useEffect(() => {
+    const ambientBed = ambientBedRef.current;
+    const context = audioContextRef.current;
+    if (!ambientBed || !context || context.state === "closed") {
+      return;
+    }
+
+    ambientBed.gain.gain.setTargetAtTime(isBotSpeaking ? 0.045 : 0.095, context.currentTime, 0.8);
+  }, [isBotSpeaking]);
 
   const sendTextTurn = useCallback((text: string) => {
     if (!sessionRef.current || !isSessionReady) {
@@ -641,7 +760,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsAwaitingReply(false);
 
     try {
-      await ensureOutputAudioContext();
+      const outputContext = await ensureOutputAudioContext();
+      startAmbientBed(outputContext);
       const context = await ensurePresentationContext();
       const token = await ensureGeminiToken();
       setDidShowFitQuestion(false);
@@ -717,6 +837,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setIsMicOpen(false);
             setIsAwaitingReply(false);
             stopPlayback();
+            stopAmbientBed();
           },
         },
         config: {
@@ -726,7 +847,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: process.env.NEXT_PUBLIC_GOOGLE_VOICE_ID || "Puck",
+                voiceName: process.env.NEXT_PUBLIC_GOOGLE_VOICE_ID || DEFAULT_VOICE_ID,
               },
             },
           },
@@ -740,6 +861,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         turnComplete: true,
       });
     } catch (error) {
+      stopAmbientBed();
       setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
       setIsStarting(false);
     }

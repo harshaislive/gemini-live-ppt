@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { buildSystemInstruction } from "@/lib/beforest-runtime";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-const GOOGLE_VOICE_ID = process.env.GOOGLE_VOICE_ID || "Puck";
+const GOOGLE_VOICE_ID = process.env.GOOGLE_VOICE_ID || "Gacrux";
 const ACCESS_COOKIE = "beforest_presentation_access";
 const PASSCODE = process.env.PRESENTATION_PASSCODE?.trim() || "";
 

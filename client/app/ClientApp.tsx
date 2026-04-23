@@ -67,6 +67,8 @@ type RecorderState = {
   gain: GainNode;
   sampleRate: number;
   hasSpeech: boolean;
+  silenceTimerId: number | null;
+  noSpeechTimerId: number | null;
 };
 
 type AmbientBedState = {
@@ -172,7 +174,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (isMicOpen) {
       return isUserSpeaking
         ? takeLastWords(userTranscript.trim(), 10) || "Listening..."
-        : "Listening. Speak, then tap again to send.";
+        : "Ask your question. I will send it when you pause.";
     }
     if (isAwaitingReply) {
       return "Answering your question...";
@@ -181,7 +183,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return "Opening Gemini Live...";
     }
     if (didMissUserTurn) {
-      return "No voice detected. Tap speak, ask one clear question, then send.";
+      return "No voice detected. Tap ask when you are ready.";
     }
     if (isUserSpeaking) {
       return takeLastWords(userTranscript.trim(), 10) || "Listening...";
@@ -293,6 +295,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         void audioContextRef.current.close();
       }
       if (recorderRef.current) {
+        if (recorderRef.current.silenceTimerId) {
+          window.clearTimeout(recorderRef.current.silenceTimerId);
+        }
+        if (recorderRef.current.noSpeechTimerId) {
+          window.clearTimeout(recorderRef.current.noSpeechTimerId);
+        }
         recorderRef.current.stream.getTracks().forEach((track) => track.stop());
         void recorderRef.current.context.close();
       }
@@ -436,6 +444,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     });
   }, [isSessionReady, stopPlayback]);
 
+  const showPromptModal = useCallback((modal: PromptModal) => {
+    stopPlayback();
+    setIsAwaitingReply(false);
+    setBotTtsTranscript("");
+    pendingBotTranscriptRef.current = "";
+    setPromptModal(modal);
+  }, [stopPlayback]);
+
   const createPcmAudioBuffer = useCallback(
     (context: AudioContext, bytes: Uint8Array, sampleRate: number) => {
       const samples = new Int16Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 2));
@@ -546,7 +562,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           : [];
 
         if (question && suggestedAnswers.length >= 2) {
-          setPromptModal({
+          showPromptModal({
             id: responseId,
             question,
             context,
@@ -560,7 +576,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           response: {
             shown: Boolean(question && suggestedAnswers.length >= 2),
             guidance:
-              "The listener is seeing one option-only question. Pause for their choice before advancing the agenda.",
+              "The listener is seeing one option-only question. Stop speaking until they choose an option.",
           },
         };
       }
@@ -575,7 +591,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     });
 
     sessionRef.current?.sendToolResponse({ functionResponses: responses });
-  }, []);
+  }, [showPromptModal]);
 
   const handleLiveMessage = useCallback(async (message: LiveServerMessage) => {
     if (message.toolCall?.functionCalls?.length) {
@@ -873,7 +889,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     const timerId = window.setTimeout(() => {
-      setPromptModal({
+      showPromptModal({
         id: "fit-question",
         question: "What are you looking for from silence right now?",
         context:
@@ -888,7 +904,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }, 26000);
 
     return () => window.clearTimeout(timerId);
-  }, [didShowFitQuestion, isAwaitingReply, isMicOpen, isSessionReady, promptModal]);
+  }, [didShowFitQuestion, isAwaitingReply, isMicOpen, isSessionReady, promptModal, showPromptModal]);
 
   async function handleOpenMic() {
     const micCapabilityError = getMicCapabilityError();
@@ -924,9 +940,19 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         gain,
         sampleRate: context.sampleRate,
         hasSpeech: false,
+        silenceTimerId: null,
+        noSpeechTimerId: window.setTimeout(() => {
+          if (!recorderRef.current?.hasSpeech) {
+            void handleCloseMic("silent");
+          }
+        }, 6500),
       };
 
       processor.onaudioprocess = (event) => {
+        const recorder = recorderRef.current;
+        if (!recorder) {
+          return;
+        }
         const input = new Float32Array(event.inputBuffer.getChannelData(0));
         let energy = 0;
         for (const sample of input) {
@@ -934,7 +960,19 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         }
         const isSpeaking = Math.sqrt(energy / input.length) > 0.015;
         if (isSpeaking) {
-          recorderRef.current!.hasSpeech = true;
+          recorder.hasSpeech = true;
+          if (recorder.noSpeechTimerId) {
+            window.clearTimeout(recorder.noSpeechTimerId);
+            recorder.noSpeechTimerId = null;
+          }
+          if (recorder.silenceTimerId) {
+            window.clearTimeout(recorder.silenceTimerId);
+            recorder.silenceTimerId = null;
+          }
+        } else if (recorder.hasSpeech && !recorder.silenceTimerId) {
+          recorder.silenceTimerId = window.setTimeout(() => {
+            void handleCloseMic("auto");
+          }, 950);
         }
         setIsUserSpeaking(isSpeaking);
 
@@ -964,10 +1002,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
   }
 
-  async function handleCloseMic() {
+  async function handleCloseMic(reason: "manual" | "auto" | "silent" = "manual") {
     setIsMicTransitioning(true);
     setDidMissUserTurn(false);
-    setIsAwaitingReply(true);
+    setIsAwaitingReply(reason !== "silent");
     setIsUserSpeaking(false);
 
     try {
@@ -979,6 +1017,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         return;
       }
 
+      if (recorder.silenceTimerId) {
+        window.clearTimeout(recorder.silenceTimerId);
+      }
+      if (recorder.noSpeechTimerId) {
+        window.clearTimeout(recorder.noSpeechTimerId);
+      }
       recorder.processor.disconnect();
       recorder.source.disconnect();
       recorder.gain.disconnect();
@@ -1011,7 +1055,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
     if (isMicOpen) {
-      void handleCloseMic();
+      void handleCloseMic("manual");
       return;
     }
     void handleOpenMic();
@@ -1032,17 +1076,17 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     ? "Connecting"
     : isLive
       ? isMicOpen
-        ? "Send question"
-        : "Speak"
+        ? "Listening"
+        : "Ask a question"
       : "Begin live walkthrough";
 
   const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
   const micHint = isLive
     ? isMicOpen
-      ? "Listening now. Send when your question is complete."
+      ? "Listening now. Pause when finished; I will send it automatically."
       : isAwaitingReply
         ? "Sending your question to Gemini."
-        : "Interrupt any time. Speak naturally, then send."
+        : "Use voice only when you want to ask something. The presentation continues otherwise."
     : isAccessReady
       ? isGuidePrepared
         ? "The guide is ready. Start the walkthrough, then interrupt with voice when needed."

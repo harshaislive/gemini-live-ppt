@@ -373,6 +373,42 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setIsBotSpeaking(false);
   }, []);
 
+  const stopRecorder = useCallback(() => {
+    const recorder = recorderRef.current;
+    recorderRef.current = null;
+    if (!recorder) {
+      setIsUserSpeaking(false);
+      setIsMicOpen(false);
+      return;
+    }
+
+    if (recorder.silenceTimerId) {
+      window.clearTimeout(recorder.silenceTimerId);
+    }
+    if (recorder.noSpeechTimerId) {
+      window.clearTimeout(recorder.noSpeechTimerId);
+    }
+    try {
+      recorder.processor.disconnect();
+    } catch {
+      // noop
+    }
+    try {
+      recorder.source.disconnect();
+    } catch {
+      // noop
+    }
+    try {
+      recorder.gain.disconnect();
+    } catch {
+      // noop
+    }
+    recorder.stream.getTracks().forEach((track) => track.stop());
+    void recorder.context.close();
+    setIsUserSpeaking(false);
+    setIsMicOpen(false);
+  }, []);
+
   const stopAmbientBed = useCallback(() => {
     const ambientBed = ambientBedRef.current;
     ambientBedRef.current = null;
@@ -989,16 +1025,28 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             void handleLiveMessage(message);
           },
           onerror: (event: ErrorEvent) => {
+            sessionRef.current = null;
             setUiError(event.message || "Gemini Live connection failed.");
             setIsStarting(false);
+            setIsSessionReady(false);
             setIsAwaitingReply(false);
+            setPromptModal(null);
+            setHasSegmentTurnCompleted(false);
+            modalResponseInFlightRef.current = false;
+            stopRecorder();
             stopPlayback();
             stopAmbientBed();
           },
           onclose: () => {
+            sessionRef.current = null;
             setIsSessionReady(false);
+            setIsStarting(false);
             setIsMicOpen(false);
             setIsAwaitingReply(false);
+            setPromptModal(null);
+            setHasSegmentTurnCompleted(false);
+            modalResponseInFlightRef.current = false;
+            stopRecorder();
             stopPlayback();
             stopAmbientBed();
           },
@@ -1022,7 +1070,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setGeminiToken(null);
       sendPresenterSegment(FIRST_SEGMENT_ID, undefined, undefined, liveSession);
     } catch (error) {
+      sessionRef.current = null;
       stopAmbientBed();
+      stopRecorder();
       setGeminiToken(null);
       setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
       setIsStarting(false);
@@ -1188,6 +1238,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }
 
   async function handleCloseMic(reason: "manual" | "auto" | "silent" = "manual") {
+    if (!recorderRef.current) {
+      setIsMicTransitioning(false);
+      setIsMicOpen(false);
+      setIsUserSpeaking(false);
+      setIsAwaitingReply(false);
+      return;
+    }
+
     setIsMicTransitioning(true);
     setDidMissUserTurn(false);
     setIsAwaitingReply(reason !== "silent");
@@ -1477,6 +1535,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                           "The listener skipped this question.",
                           "Continue without forcing the skipped answer. Keep momentum and avoid mentioning the skip.",
                         );
+                      } else {
+                        modalResponseInFlightRef.current = false;
+                        setIsAwaitingReply(false);
                       }
                     }}
                   >

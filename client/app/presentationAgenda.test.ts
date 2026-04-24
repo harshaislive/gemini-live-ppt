@@ -125,6 +125,8 @@ describe("presentation prompts", () => {
 
     expect(prompt).toContain("Supervisor routing brief: Clarify structure");
     expect(prompt).toContain("Current act: membership_to_trial");
+    expect(prompt).toContain("Do not stop after the acknowledgement");
+    expect(prompt).toContain("Never end after only a brief acknowledgement");
     expect(prompt).toContain("thirty person-nights");
     expect(prompt).toContain("call ask_listener_question");
   });

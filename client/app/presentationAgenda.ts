@@ -275,8 +275,11 @@ export function buildSegmentTurnPrompt(params: {
   const supervisorLine = params.supervisorBrief
     ? `\nSupervisor routing brief: ${params.supervisorBrief}`
     : "";
+  const responseModeLine = params.listenerChoice
+    ? "Acknowledge the listener choice in one short sentence, then continue into the full act. Do not stop after the acknowledgement."
+    : "Open the act directly. Do not stall or ask for permission.";
   const modalLine = gate.modalGoal
-    ? `At the end of this act, call ask_listener_question with 2-4 concise options. Modal goal: ${gate.modalGoal}`
+    ? `Only after completing every act instruction, call ask_listener_question with 2-4 concise options. Modal goal: ${gate.modalGoal}`
     : "Do not call ask_listener_question in this act. Close cleanly.";
 
   return [
@@ -296,10 +299,11 @@ export function buildSegmentTurnPrompt(params: {
     "Pacing rules:",
     "- Speak as one continuous human presentation act, not separate slides.",
     "- Do not stop between the listed sections. Bridge naturally from one idea to the next.",
+    `- ${responseModeLine}`,
     "- Use show_curated_image only at natural visual shifts, and do not mention the tool.",
-    "- Keep the full act under 75 seconds unless the listener has just asked for detail.",
+    "- The act should last roughly 35-65 seconds. Never end after only a brief acknowledgement.",
     `- ${modalLine}`,
-    "- If you call a modal, stop speaking immediately and wait for the listener choice.",
+    "- If you call a modal, do it as the final action of the act, then stop speaking and wait for the listener choice.",
   ].filter(Boolean).join("\n");
 }
 

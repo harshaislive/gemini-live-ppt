@@ -31,7 +31,9 @@ A Next.js application for the Beforest editorial voice experience on direct Gemi
    npm run dev
    ```
 
-4. **Open** [http://localhost:3000](http://localhost:3000) and click **Begin live walkthrough**
+   The dev server binds to `0.0.0.0`, so you can reach it from Tailscale or another device on your network. It also respects `PORT`, for example `PORT=18789 npm run dev`.
+
+4. **Open** [http://localhost:3000](http://localhost:3000), or if you are using Tailscale Serve/Funnel, run on the proxied port and open your Tailscale hostname URL.
 
 ## Configuration
 

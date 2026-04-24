@@ -773,6 +773,33 @@ a:focus-visible {
   width: min(88vw, 36rem);
 }
 
+.beforest-status {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(216, 203, 179, 0.18);
+  background: rgba(20, 15, 11, 0.56);
+  color: rgba(247, 240, 227, 0.84);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(14px);
+}
+
+.beforest-status--connecting,
+.beforest-status--warming_intro {
+  color: rgba(219, 193, 159, 0.94);
+}
+
+.beforest-status--live_ready {
+  color: rgba(185, 199, 166, 0.96);
+}
+
+.beforest-status--live_unavailable {
+  color: rgba(240, 179, 156, 0.96);
+}
+
 .beforest-inline-error {
   margin: 0;
   width: min(100%, 34rem);
@@ -939,6 +966,13 @@ a:focus-visible {
   transform: translateY(0) scale(0.985);
 }
 
+.beforest-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
 .beforest-mic-button {
   position: relative;
   min-width: 15rem;
@@ -1035,6 +1069,31 @@ a:focus-visible {
 .beforest-mic-button:disabled {
   cursor: default;
   opacity: 0.58;
+}
+
+.beforest-secondary-action {
+  min-height: 68px;
+  padding: 0 18px;
+  border: 1px solid rgba(216, 203, 179, 0.18);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 38%),
+    rgba(20, 15, 11, 0.58);
+  color: #f7f0e3;
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(16px);
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    opacity 180ms ease;
+}
+
+.beforest-secondary-action:hover {
+  transform: translateY(-1px);
+}
+
+.beforest-secondary-action:active {
+  transform: translateY(0) scale(0.985);
 }
 
 .beforest-screen-frame {
@@ -1205,6 +1264,11 @@ a:focus-visible {
   .beforest-mic-button {
     min-width: min(100%, 13.5rem);
     height: 64px;
+  }
+
+  .beforest-secondary-action {
+    min-height: 64px;
+    width: 100%;
   }
 
   .beforest-mic-button__surface {

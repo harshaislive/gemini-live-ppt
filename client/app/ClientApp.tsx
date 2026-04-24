@@ -70,6 +70,14 @@ type PresentationPlanRequest = {
   elapsedSeconds: number;
 };
 
+type LiveWarmupPhase =
+  | "idle"
+  | "preparing"
+  | "connecting"
+  | "warming_intro"
+  | "live_ready"
+  | "live_unavailable";
+
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_VOICE_ID = "Gacrux";
@@ -185,6 +193,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [fallbackModalSections, setFallbackModalSections] = useState<PresentationSectionId[]>([]);
   const [hasSegmentTurnCompleted, setHasSegmentTurnCompleted] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
+  const [liveWarmupPhase, setLiveWarmupPhase] = useState<LiveWarmupPhase>("idle");
 
   const sessionRef = useRef<Session | null>(null);
   const recorderRef = useRef<RecorderState | null>(null);
@@ -203,6 +212,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const segmentStartedAtRef = useRef<number | null>(null);
   const pendingPromptModalRef = useRef<PromptModal | null>(null);
   const modalResponseInFlightRef = useRef(false);
+  const bridgeNarrationTimerIdRef = useRef<number | null>(null);
+  const hasReceivedModelAudioRef = useRef(false);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
@@ -216,6 +227,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
       return "Preparing the presentation...";
+    }
+    if (liveWarmupPhase === "warming_intro") {
+      return "Opening the live guide. Stay with this first scene while the voice locks in.";
+    }
+    if (liveWarmupPhase === "live_unavailable") {
+      return "Live is unavailable right now. Retry when you are ready.";
     }
     if (shouldShowAccessForm) {
       return accessState.requiresPasscode
@@ -261,9 +278,30 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return "Tap the mic to reconnect.";
     }
     return "Begin the guided walkthrough when you are ready.";
-  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAccessReady, isAwaitingReply, isBusy, isGuidePrepared, isLive, isMicOpen, isPreloading, isUserSpeaking, shouldShowAccessForm, uiError, userTranscript]);
+  }, [accessState, botTtsTranscript, didMissUserTurn, hasEverConnected, isAccessReady, isAwaitingReply, isBusy, isGuidePrepared, isLive, isMicOpen, isPreloading, isUserSpeaking, liveWarmupPhase, shouldShowAccessForm, uiError, userTranscript]);
 
   const guideStage = useMemo(() => getPresentationSegment(currentSegmentId).stageLabel, [currentSegmentId]);
+  const connectionLabel = useMemo(() => {
+    if (liveWarmupPhase === "preparing") {
+      return "Preparing";
+    }
+    if (liveWarmupPhase === "connecting") {
+      return "Connecting live";
+    }
+    if (liveWarmupPhase === "warming_intro") {
+      return "Holding the opening";
+    }
+    if (liveWarmupPhase === "live_unavailable") {
+      return "Live unavailable";
+    }
+    if (liveWarmupPhase === "live_ready") {
+      return "Live ready";
+    }
+    if (isGuidePrepared) {
+      return "Guide prepared";
+    }
+    return "Awaiting start";
+  }, [isGuidePrepared, liveWarmupPhase]);
 
   useEffect(() => {
     let cancelled = false;
@@ -363,8 +401,50 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         recorderRef.current.stream.getTracks().forEach((track) => track.stop());
         void recorderRef.current.context.close();
       }
+      if (bridgeNarrationTimerIdRef.current) {
+        window.clearTimeout(bridgeNarrationTimerIdRef.current);
+      }
+      window.speechSynthesis?.cancel();
     };
   }, []);
+
+  const cancelBridgeNarration = useCallback(() => {
+    if (bridgeNarrationTimerIdRef.current) {
+      window.clearTimeout(bridgeNarrationTimerIdRef.current);
+      bridgeNarrationTimerIdRef.current = null;
+    }
+    if (typeof window !== "undefined") {
+      window.speechSynthesis?.cancel();
+    }
+  }, []);
+
+  const scheduleBridgeNarration = useCallback((delayMs = 1600) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    cancelBridgeNarration();
+    bridgeNarrationTimerIdRef.current = window.setTimeout(() => {
+      if (hasReceivedModelAudioRef.current || isSessionReady) {
+        return;
+      }
+
+      setLiveWarmupPhase("warming_intro");
+
+      if (!("speechSynthesis" in window) || typeof window.SpeechSynthesisUtterance === "undefined") {
+        return;
+      }
+
+      const utterance = new window.SpeechSynthesisUtterance(
+        "One moment. I am opening the guide and gathering the first scene now.",
+      );
+      utterance.rate = 0.94;
+      utterance.pitch = 0.9;
+      utterance.volume = 0.58;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }, delayMs);
+  }, [cancelBridgeNarration, isSessionReady]);
 
   const ensureOutputAudioContext = useCallback(async () => {
     if (!audioContextRef.current) {
@@ -821,6 +901,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     const subtitleSnapshot = pendingBotTranscriptRef.current;
     if (extractAudioPayloadFromMessage(message)) {
+      if (!hasReceivedModelAudioRef.current) {
+        hasReceivedModelAudioRef.current = true;
+        cancelBridgeNarration();
+        setLiveWarmupPhase("live_ready");
+      }
       await scheduleAudioPlayback(message, subtitleSnapshot);
     }
 
@@ -828,7 +913,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setIsAwaitingReply(false);
       setHasSegmentTurnCompleted(true);
     }
-  }, [runToolCalls, scheduleAudioPlayback, stopPlayback]);
+  }, [cancelBridgeNarration, runToolCalls, scheduleAudioPlayback, stopPlayback]);
 
   async function handleAccessSubmit(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -978,12 +1063,16 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setUserTranscript("");
     setDidMissUserTurn(false);
     setIsAwaitingReply(false);
+    hasReceivedModelAudioRef.current = false;
+    setLiveWarmupPhase("preparing");
+    scheduleBridgeNarration();
 
     try {
       const outputContext = await ensureOutputAudioContext();
       startAmbientBed(outputContext);
       await ensurePresentationContext();
       const token = await ensureGeminiToken();
+      setLiveWarmupPhase("connecting");
       setCompletedSections([]);
       completedSectionsRef.current = [];
       setFallbackModalSections([]);
@@ -1053,12 +1142,16 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setHasEverConnected(true);
             setIsStarting(false);
             setUiError(null);
+            if (!hasReceivedModelAudioRef.current) {
+              setLiveWarmupPhase("connecting");
+            }
           },
           onmessage: (message: LiveServerMessage) => {
             void handleLiveMessage(message);
           },
           onerror: (event: ErrorEvent) => {
             sessionRef.current = null;
+            cancelBridgeNarration();
             setUiError(event.message || "Gemini Live connection failed.");
             setIsStarting(false);
             setIsSessionReady(false);
@@ -1067,12 +1160,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setHasSegmentTurnCompleted(false);
             pendingPromptModalRef.current = null;
             modalResponseInFlightRef.current = false;
+            setLiveWarmupPhase("live_unavailable");
             stopRecorder();
             stopPlayback();
             stopAmbientBed();
           },
           onclose: () => {
             sessionRef.current = null;
+            cancelBridgeNarration();
             setIsSessionReady(false);
             setIsStarting(false);
             setIsMicOpen(false);
@@ -1081,6 +1176,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setHasSegmentTurnCompleted(false);
             pendingPromptModalRef.current = null;
             modalResponseInFlightRef.current = false;
+            setLiveWarmupPhase("live_unavailable");
             stopRecorder();
             stopPlayback();
             stopAmbientBed();
@@ -1106,11 +1202,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       sendPresenterSegment(FIRST_SEGMENT_ID, undefined, undefined, liveSession);
     } catch (error) {
       sessionRef.current = null;
+      cancelBridgeNarration();
       stopAmbientBed();
       stopRecorder();
       setGeminiToken(null);
       setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
       setIsStarting(false);
+      setLiveWarmupPhase("live_unavailable");
     }
   }
 
@@ -1353,6 +1451,26 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     void handleOpenMic();
   }
 
+  function handleRetryLive() {
+    cancelBridgeNarration();
+    stopRecorder();
+    stopPlayback();
+    stopAmbientBed();
+    hasReceivedModelAudioRef.current = false;
+    setUiError(null);
+    setGeminiToken(null);
+    setPromptModal(null);
+    setIsSessionReady(false);
+    setIsAwaitingReply(false);
+    setHasSegmentTurnCompleted(false);
+    setLiveWarmupPhase("preparing");
+    pendingPromptModalRef.current = null;
+    modalResponseInFlightRef.current = false;
+    void sessionRef.current?.close?.();
+    sessionRef.current = null;
+    void handleStart();
+  }
+
   async function handlePromptSubmit(answer: string) {
     const trimmedAnswer = answer.trim();
     if (!promptModal || !trimmedAnswer || isMicOpen || isAwaitingReply || modalResponseInFlightRef.current) {
@@ -1392,6 +1510,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         ? "Listening"
         : "Ask a question"
       : "Begin live walkthrough";
+  const showRetryAction = !shouldShowAccessForm && !isLive && liveWarmupPhase === "live_unavailable";
 
   const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
   const micHint = isLive
@@ -1447,6 +1566,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           </header>
 
           <div className="beforest-bottom-ui">
+            <p className={`beforest-status beforest-status--${liveWarmupPhase}`}>
+              {connectionLabel}
+            </p>
+
             {uiError ? (
               <p className="beforest-inline-error" role="alert">
                 {uiError}
@@ -1461,34 +1584,46 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             </p>
 
             {!shouldShowAccessForm ? (
-              <button
-                type="button"
-                className={[
-                  "beforest-mic-button",
-                  isLive ? "is-live" : "",
-                  isMicOpen ? "is-open" : "",
-                  isBusy || isMicBusy ? "is-busy" : "",
-                  isBotSpeaking ? "is-speaking" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                onClick={handlePrimaryAction}
-                disabled={!canUsePrimaryAction}
-                aria-label={actionLabel}
-                aria-pressed={isLive ? isMicOpen : undefined}
-              >
-                <span className="beforest-mic-button__ring" aria-hidden="true" />
-                <span className="beforest-mic-button__surface">
-                  {isBusy || isMicBusy ? (
-                    <LoaderCircle size={24} className="spin" />
-                  ) : isLive && isMicOpen ? (
-                    <Send size={24} />
-                  ) : (
-                    <Mic size={24} />
-                  )}
-                </span>
-                <span className="beforest-action-label">{actionLabel}</span>
-              </button>
+              <div className="beforest-action-row">
+                <button
+                  type="button"
+                  className={[
+                    "beforest-mic-button",
+                    isLive ? "is-live" : "",
+                    isMicOpen ? "is-open" : "",
+                    isBusy || isMicBusy ? "is-busy" : "",
+                    isBotSpeaking ? "is-speaking" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={handlePrimaryAction}
+                  disabled={!canUsePrimaryAction}
+                  aria-label={actionLabel}
+                  aria-pressed={isLive ? isMicOpen : undefined}
+                >
+                  <span className="beforest-mic-button__ring" aria-hidden="true" />
+                  <span className="beforest-mic-button__surface">
+                    {isBusy || isMicBusy ? (
+                      <LoaderCircle size={24} className="spin" />
+                    ) : isLive && isMicOpen ? (
+                      <Send size={24} />
+                    ) : (
+                      <Mic size={24} />
+                    )}
+                  </span>
+                  <span className="beforest-action-label">{actionLabel}</span>
+                </button>
+
+                {showRetryAction ? (
+                  <button
+                    type="button"
+                    className="beforest-secondary-action"
+                    onClick={handleRetryLive}
+                  >
+                    Retry live
+                  </button>
+                ) : null}
+              </div>
             ) : null}
 
             <p className="beforest-mic-hint" aria-live="polite">

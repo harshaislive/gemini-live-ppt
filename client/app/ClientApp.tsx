@@ -169,6 +169,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [currentSectionId, setCurrentSectionId] = useState<PresentationSectionId>(FIRST_SECTION_ID);
   const [completedSections, setCompletedSections] = useState<PresentationSectionId[]>([]);
   const [fallbackModalSections, setFallbackModalSections] = useState<PresentationSectionId[]>([]);
+  const [hasSegmentTurnCompleted, setHasSegmentTurnCompleted] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
 
   const sessionRef = useRef<Session | null>(null);
@@ -522,6 +523,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setBotTtsTranscript("");
     pendingBotTranscriptRef.current = "";
     setIsAwaitingReply(true);
+    setHasSegmentTurnCompleted(false);
 
     try {
       session.sendClientContent({
@@ -756,6 +758,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     if (message.serverContent?.turnComplete || message.serverContent?.generationComplete) {
       setIsAwaitingReply(false);
+      setHasSegmentTurnCompleted(true);
     }
   }, [runToolCalls, scheduleAudioPlayback, stopPlayback]);
 
@@ -916,6 +919,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setCompletedSections([]);
       completedSectionsRef.current = [];
       setFallbackModalSections([]);
+      setHasSegmentTurnCompleted(false);
       currentSegmentIdRef.current = FIRST_SEGMENT_ID;
       currentSectionIdRef.current = getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId;
       setCurrentSegmentId(FIRST_SEGMENT_ID);
@@ -1015,9 +1019,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       });
 
       sessionRef.current = liveSession;
+      setGeminiToken(null);
       sendPresenterSegment(FIRST_SEGMENT_ID, undefined, undefined, liveSession);
     } catch (error) {
       stopAmbientBed();
+      setGeminiToken(null);
       setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
       setIsStarting(false);
     }
@@ -1029,10 +1035,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (
       !isSessionReady ||
       !modalGoal ||
+      !hasSegmentTurnCompleted ||
       fallbackModalSections.includes(currentSectionId) ||
       promptModal ||
       isMicOpen ||
-      isAwaitingReply
+      isAwaitingReply ||
+      isBotSpeaking
     ) {
       return;
     }
@@ -1068,13 +1076,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         suggestedAnswers: fallbackOptions,
       });
       setFallbackModalSections((previous) => previous.includes(section.id) ? previous : [...previous, section.id]);
-    }, 4000);
+    }, 900);
 
     return () => window.clearTimeout(timerId);
   }, [
     currentSectionId,
     fallbackModalSections,
+    hasSegmentTurnCompleted,
     isAwaitingReply,
+    isBotSpeaking,
     isMicOpen,
     isSessionReady,
     promptModal,

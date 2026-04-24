@@ -172,6 +172,10 @@ export const PRESENTATION_SEGMENTS: PresentationSegment[] = [
 
 export const FIRST_SEGMENT_ID: PresentationSegmentId = "opening_to_fit";
 
+export function isPresentationSectionId(value: unknown): value is PresentationSectionId {
+  return typeof value === "string" && PRESENTATION_AGENDA.some((section) => section.id === value);
+}
+
 export function getPresentationSection(sectionId: PresentationSectionId) {
   return PRESENTATION_AGENDA.find((section) => section.id === sectionId) || PRESENTATION_AGENDA[0];
 }

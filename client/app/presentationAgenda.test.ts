@@ -6,6 +6,7 @@ import {
   getAllowedNextSegments,
   getNextSegmentAfterGate,
   getPresentationSegment,
+  isPresentationSectionId,
 } from "./presentationAgenda";
 
 describe("presentation agenda routing", () => {
@@ -13,6 +14,12 @@ describe("presentation agenda routing", () => {
     const firstSegment = getPresentationSegment(FIRST_SEGMENT_ID);
     expect(firstSegment.id).toBe("opening_to_fit");
     expect(firstSegment.gateSectionId).toBe("access_model");
+  });
+
+  it("validates presentation section ids before route code trusts them", () => {
+    expect(isPresentationSectionId("access_model")).toBe(true);
+    expect(isPresentationSectionId("not_a_real_section")).toBe(false);
+    expect(isPresentationSectionId(null)).toBe(false);
   });
 
   it("limits next segments to explicit graph edges", () => {

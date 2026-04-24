@@ -5,9 +5,9 @@ import {
   coercePlannerDecision,
   getAllowedNextSegments,
   getPresentationSegment,
+  isPresentationSectionId,
   type PlannerDecision,
   type PresentationSegmentId,
-  type PresentationSectionId,
 } from "@/app/presentationAgenda";
 
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
@@ -43,7 +43,9 @@ export async function POST(req: NextRequest) {
       ? body.currentSegmentId
       : "opening_to_fit";
     const currentSegment = getPresentationSegment(currentSegmentId);
-    const gateSectionId = String(body?.gateSectionId || currentSegment.gateSectionId) as PresentationSectionId;
+    const gateSectionId = isPresentationSectionId(body?.gateSectionId)
+      ? body.gateSectionId
+      : currentSegment.gateSectionId;
     const allowedNextSegments = getAllowedNextSegments({ currentSegmentId, gateSectionId });
     const listenerChoice = String(body?.listenerChoice || "").slice(0, 500);
     const question = String(body?.question || "").slice(0, 300);

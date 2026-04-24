@@ -127,7 +127,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const rawDecision = parsePlannerJson(response.text || "{}");
+    let rawDecision: Partial<PlannerDecision> | null = null;
+    try {
+      rawDecision = parsePlannerJson(response.text || "{}");
+    } catch {
+      rawDecision = null;
+    }
+
     const decision = coercePlannerDecision({
       currentSegmentId,
       gateSectionId,

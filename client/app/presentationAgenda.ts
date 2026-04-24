@@ -201,6 +201,11 @@ export function getAllowedNextSegments(params: {
   currentSegmentId: PresentationSegmentId;
   gateSectionId: PresentationSectionId;
 }) {
+  const currentSegment = getPresentationSegment(params.currentSegmentId);
+  if (currentSegment.gateSectionId !== params.gateSectionId) {
+    return [] as PresentationSegmentId[];
+  }
+
   if (params.currentSegmentId === "opening_to_fit") {
     return ["desire_to_proof", "membership_to_trial"] as PresentationSegmentId[];
   }
@@ -220,8 +225,11 @@ export function coercePlannerDecision(params: {
 }) {
   const strategies: PlannerStrategy[] = ["continue", "compress", "clarify", "trial_ready", "updates_path"];
   const allowed = getAllowedNextSegments(params);
-  const fallback = getNextSegmentAfterGate(params.gateSectionId);
-  const fallbackId = fallback?.id || allowed[0] || params.currentSegmentId;
+  const currentSegment = getPresentationSegment(params.currentSegmentId);
+  const fallback = currentSegment.gateSectionId === params.gateSectionId
+    ? getNextSegmentAfterGate(params.gateSectionId)
+    : undefined;
+  const fallbackId = allowed[0] || fallback?.id || params.currentSegmentId;
   const requestedTarget = params.decision?.targetSegmentId;
   const targetSegmentId = requestedTarget && allowed.includes(requestedTarget)
     ? requestedTarget

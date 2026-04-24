@@ -180,6 +180,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const currentSectionIdRef = useRef<PresentationSectionId>(FIRST_SECTION_ID);
   const completedSectionsRef = useRef<PresentationSectionId[]>([]);
   const presentationStartedAtRef = useRef<number | null>(null);
+  const modalResponseInFlightRef = useRef(false);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
@@ -454,6 +455,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }, [isBotSpeaking]);
 
   const showPromptModal = useCallback((modal: PromptModal) => {
+    modalResponseInFlightRef.current = false;
     stopPlayback();
     setIsAwaitingReply(false);
     setBotTtsTranscript("");
@@ -1206,10 +1208,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   async function handlePromptSubmit(answer: string) {
     const trimmedAnswer = answer.trim();
-    if (!promptModal || !trimmedAnswer || isMicOpen || isAwaitingReply) {
+    if (!promptModal || !trimmedAnswer || isMicOpen || isAwaitingReply || modalResponseInFlightRef.current) {
       return;
     }
 
+    modalResponseInFlightRef.current = true;
     const question = promptModal.question;
     setPromptModal(null);
     const currentSection = getPresentationSection(currentSectionIdRef.current);
@@ -1420,6 +1423,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                     type="button"
                     className="beforest-question-skip"
                     onClick={() => {
+                      if (modalResponseInFlightRef.current) {
+                        return;
+                      }
+                      modalResponseInFlightRef.current = true;
                       const currentSection = getPresentationSection(currentSectionIdRef.current);
                       const nextSegment = getNextSegmentAfterGate(currentSection.id);
                       setPromptModal(null);

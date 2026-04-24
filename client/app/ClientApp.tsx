@@ -76,7 +76,21 @@ const DEFAULT_VOICE_ID = "Gacrux";
 const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence";
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
-const SUPERVISOR_PLAN_TIMEOUT_MS = 2_500;
+const SUPERVISOR_PLAN_TIMEOUT_MS = 900;
+const MODAL_AFTER_TURN_DELAY_MS = 900;
+
+function getMinimumModalDelayMs(segmentId: PresentationSegmentId) {
+  if (segmentId === "opening_to_fit") {
+    return 18_000;
+  }
+  if (segmentId === "desire_to_proof") {
+    return 22_000;
+  }
+  if (segmentId === "membership_to_trial") {
+    return 18_000;
+  }
+  return 0;
+}
 
 type PromptModal = {
   id: string;
@@ -186,6 +200,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const currentSectionIdRef = useRef<PresentationSectionId>(FIRST_SECTION_ID);
   const completedSectionsRef = useRef<PresentationSectionId[]>([]);
   const presentationStartedAtRef = useRef<number | null>(null);
+  const segmentStartedAtRef = useRef<number | null>(null);
+  const pendingPromptModalRef = useRef<PromptModal | null>(null);
   const modalResponseInFlightRef = useRef(false);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
@@ -515,6 +531,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setPromptModal(modal);
   }, [stopPlayback]);
 
+  const queuePromptModal = useCallback((modal: PromptModal) => {
+    pendingPromptModalRef.current = modal;
+  }, []);
+
   const setSectionVisual = useCallback((sectionId: PresentationSectionId) => {
     const section = getPresentationSection(sectionId);
     const sectionVisual = imagesRef.current.find((image) => image.id === section.visualId);
@@ -558,6 +578,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
 
     const segment = getPresentationSegment(segmentId);
+    pendingPromptModalRef.current = null;
+    segmentStartedAtRef.current = Date.now();
     currentSegmentIdRef.current = segmentId;
     currentSectionIdRef.current = segment.gateSectionId;
     setCurrentSegmentId(segmentId);
@@ -740,7 +762,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           : [];
 
         if (question && suggestedAnswers.length >= 2) {
-          showPromptModal({
+          queuePromptModal({
             id: responseId,
             question,
             context,
@@ -754,7 +776,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           response: {
             shown: Boolean(question && suggestedAnswers.length >= 2),
             guidance:
-              "The listener is seeing one option-only question. Stop speaking until they choose an option.",
+              "The listener question has been queued. Finish the current act cleanly, then stop speaking and wait for the modal answer.",
           },
         };
       }
@@ -769,7 +791,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     });
 
     sessionRef.current?.sendToolResponse({ functionResponses: responses });
-  }, [showPromptModal]);
+  }, [queuePromptModal]);
 
   const handleLiveMessage = useCallback(async (message: LiveServerMessage) => {
     if (message.toolCall?.functionCalls?.length) {
@@ -966,6 +988,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       completedSectionsRef.current = [];
       setFallbackModalSections([]);
       setHasSegmentTurnCompleted(false);
+      pendingPromptModalRef.current = null;
       currentSegmentIdRef.current = FIRST_SEGMENT_ID;
       currentSectionIdRef.current = getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId;
       setCurrentSegmentId(FIRST_SEGMENT_ID);
@@ -1042,6 +1065,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setIsAwaitingReply(false);
             setPromptModal(null);
             setHasSegmentTurnCompleted(false);
+            pendingPromptModalRef.current = null;
             modalResponseInFlightRef.current = false;
             stopRecorder();
             stopPlayback();
@@ -1055,6 +1079,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setIsAwaitingReply(false);
             setPromptModal(null);
             setHasSegmentTurnCompleted(false);
+            pendingPromptModalRef.current = null;
             modalResponseInFlightRef.current = false;
             stopRecorder();
             stopPlayback();
@@ -1105,6 +1130,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
 
+    const elapsedInSegmentMs = segmentStartedAtRef.current
+      ? Date.now() - segmentStartedAtRef.current
+      : Number.POSITIVE_INFINITY;
+    const delayMs = Math.max(
+      MODAL_AFTER_TURN_DELAY_MS,
+      getMinimumModalDelayMs(currentSegmentId) - elapsedInSegmentMs,
+    );
+
     const timerId = window.setTimeout(() => {
       const fallbackOptions = section.id === "access_model"
         ? [
@@ -1127,7 +1160,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
               "Not right now",
             ];
 
-      showPromptModal({
+      const queuedModal = pendingPromptModalRef.current;
+      pendingPromptModalRef.current = null;
+      showPromptModal(queuedModal || {
         id: `fallback-${section.id}`,
         question: section.id === "trial_stay_close"
           ? "What feels like the right next step?"
@@ -1136,11 +1171,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         suggestedAnswers: fallbackOptions,
       });
       setFallbackModalSections((previous) => previous.includes(section.id) ? previous : [...previous, section.id]);
-    }, 900);
+    }, delayMs);
 
     return () => window.clearTimeout(timerId);
   }, [
     currentSectionId,
+    currentSegmentId,
     fallbackModalSections,
     hasSegmentTurnCompleted,
     isAwaitingReply,
@@ -1325,6 +1361,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     modalResponseInFlightRef.current = true;
     const question = promptModal.question;
+    pendingPromptModalRef.current = null;
     setPromptModal(null);
     const currentSection = getPresentationSection(currentSectionIdRef.current);
     const currentSegmentId = currentSegmentIdRef.current;

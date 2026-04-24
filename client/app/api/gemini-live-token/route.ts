@@ -34,10 +34,12 @@ export async function POST(req: NextRequest) {
         ? `\n\nListener note:\n- The current listener's first name is ${firstName}. Use their name sparingly and naturally when it helps warmth or clarity. Do not force it into every answer, every opening, or every close.`
         : "");
 
+    const newSessionExpireTime = new Date(Date.now() + 1000 * 60).toISOString();
+    const expireTime = new Date(Date.now() + 1000 * 60 * 30).toISOString();
     const config: CreateAuthTokenConfig = {
       uses: 1,
-      newSessionExpireTime: new Date(Date.now() + 1000 * 60).toISOString(),
-      expireTime: new Date(Date.now() + 1000 * 60 * 30).toISOString(),
+      newSessionExpireTime,
+      expireTime,
       liveConnectConstraints: {
         model: process.env.GEMINI_LIVE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025",
         config: {
@@ -58,7 +60,7 @@ export async function POST(req: NextRequest) {
     };
 
     const token = await ai.authTokens.create({ config });
-    return NextResponse.json({ name: token.name });
+    return NextResponse.json({ name: token.name, newSessionExpireTime, expireTime });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create Gemini token";
     return new NextResponse(message, { status: 500 });

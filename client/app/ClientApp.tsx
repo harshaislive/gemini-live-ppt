@@ -56,6 +56,9 @@ type PresentationContext = {
 
 type GeminiToken = {
   name: string;
+  newSessionExpireTime: string;
+  expireTime: string;
+  fetchedAt: number;
 };
 
 type PresentationPlanRequest = {
@@ -72,6 +75,8 @@ const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_VOICE_ID = "Gacrux";
 const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence";
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
+const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
+const SUPERVISOR_PLAN_TIMEOUT_MS = 2_500;
 
 type PromptModal = {
   id: string;
@@ -499,7 +504,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     session: Session | null = sessionRef.current,
   ) => {
     if (!session) {
-      return;
+      setIsAwaitingReply(false);
+      modalResponseInFlightRef.current = false;
+      setUiError("The live session closed before the next section could start. Please restart the walkthrough.");
+      return false;
     }
 
     const segment = getPresentationSegment(segmentId);
@@ -515,20 +523,28 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     pendingBotTranscriptRef.current = "";
     setIsAwaitingReply(true);
 
-    session.sendClientContent({
-      turns: [{
-        role: "user",
-        parts: [{
-          text: buildSegmentTurnPrompt({
-            segment,
-            listenerChoice,
-            supervisorBrief,
-            completedSections: completedSectionsRef.current,
-          }),
+    try {
+      session.sendClientContent({
+        turns: [{
+          role: "user",
+          parts: [{
+            text: buildSegmentTurnPrompt({
+              segment,
+              listenerChoice,
+              supervisorBrief,
+              completedSections: completedSectionsRef.current,
+            }),
+          }],
         }],
-      }],
-      turnComplete: true,
-    });
+        turnComplete: true,
+      });
+      return true;
+    } catch (error) {
+      setIsAwaitingReply(false);
+      modalResponseInFlightRef.current = false;
+      setUiError(error instanceof Error ? error.message : "Could not send the next presentation section.");
+      return false;
+    }
   }, [setSegmentVisual, stopPlayback]);
 
   const getSupervisorPlan = useCallback(async (request: PresentationPlanRequest) => {
@@ -538,11 +554,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       decision: null,
     });
 
+    let timeoutId: number | null = null;
     try {
+      const controller = new AbortController();
+      timeoutId = window.setTimeout(() => controller.abort(), SUPERVISOR_PLAN_TIMEOUT_MS);
       const response = await fetch("/api/presentation-plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
+        signal: controller.signal,
       });
       if (!response.ok) {
         throw new Error(await response.text());
@@ -555,6 +575,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       });
     } catch {
       return fallback;
+    } finally {
+      if (timeoutId) {
+        window.clearTimeout(timeoutId);
+      }
     }
   }, []);
 
@@ -794,7 +818,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }, [presentationContext]);
 
   const ensureGeminiToken = useCallback(async () => {
-    if (geminiToken) {
+    if (geminiToken && Date.parse(geminiToken.newSessionExpireTime) - Date.now() > GEMINI_TOKEN_REFRESH_BUFFER_MS) {
       return geminiToken;
     }
 
@@ -806,7 +830,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (!tokenResponse.ok) {
       throw new Error(await tokenResponse.text());
     }
-    const token = (await tokenResponse.json()) as GeminiToken;
+    const token = {
+      ...((await tokenResponse.json()) as Omit<GeminiToken, "fetchedAt">),
+      fetchedAt: Date.now(),
+    };
     setGeminiToken(token);
     return token;
   }, [geminiToken, listenerName]);
@@ -960,6 +987,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           onerror: (event: ErrorEvent) => {
             setUiError(event.message || "Gemini Live connection failed.");
             setIsStarting(false);
+            setIsAwaitingReply(false);
+            stopPlayback();
+            stopAmbientBed();
           },
           onclose: () => {
             setIsSessionReady(false);

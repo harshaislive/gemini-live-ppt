@@ -194,7 +194,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const isBusy = isStarting;
   const isMicBusy = isMicTransitioning;
   const isLive = isSessionReady;
-  const canUsePrimaryAction = isAccessReady && !isBusy && !isMicBusy;
+  const canUsePrimaryAction = isAccessReady && !isBusy && !isMicBusy && !promptModal && !modalResponseInFlightRef.current;
   const isGuidePrepared = Boolean(presentationContext && geminiToken);
 
   const displayedSubtitle = useMemo(() => {
@@ -252,10 +252,20 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   useEffect(() => {
     let cancelled = false;
     async function loadAccessState() {
-      const response = await fetch("/api/access", { cache: "no-store" });
-      const data = (await response.json()) as AccessState;
-      if (!cancelled) {
-        setAccessState(data);
+      try {
+        const response = await fetch("/api/access", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error("Unable to check presentation access.");
+        }
+        const data = (await response.json()) as AccessState;
+        if (!cancelled) {
+          setAccessState(data);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAccessState({ requiresPasscode: true, authorized: false });
+          setUiError(error instanceof Error ? error.message : "Unable to check presentation access.");
+        }
       }
     }
     void loadAccessState();
@@ -1290,6 +1300,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   }
 
   function handlePrimaryAction() {
+    if (promptModal || modalResponseInFlightRef.current) {
+      return;
+    }
     if (!isLive) {
       void handleStart();
       return;

@@ -64,25 +64,20 @@ This is the original story-driven structure found in the Beforest source materia
 
 ## 3) Current runtime structure in this repo
 
-The implementation in `presentation-content.ts` currently expands the story into **10 scenes**.
+The implementation now uses `client/app/presentationAgenda.ts` as the guided runtime agenda. It is not a fixed slide deck; it is a controlled live walkthrough where the app chooses the allowed section order and Gemini performs the current beat.
 
-This version uses:
-- **6 narrative scenes**
-- **3 quote / pause scenes**
-- **1 CTA close**
+The runtime uses:
+- guided segment groups
+- modal questions at section gates
+- planner-controlled transitions after listener choices
+- direct CTA routes for trial stay and updates
 
-| Current # | ID | Kind | Current Title | Maps to Canonical Stage | Purpose |
-|---|---|---|---|---|---|
-| 1 | `slide-01` | scene | `Full calendars do not make full lives.` | Tension | Opens with erosion, burnout, and lack of protected recovery |
-| 2 | `slide-02` | quote | `You can get very good at a life that is quietly hurting you.` | Tension / bridge | Sharp emotional pause before the reframe |
-| 3 | `slide-03` | scene | `You do not need escape. You need protected time.` | Reframe | Rest is framed as practice, not disappearance |
-| 4 | `slide-04` | scene | `Trust should be built on land, not language.` | Proof | Beforest is validated through stewardship and time |
-| 5 | `slide-05` | quote | `Rest is not a reward. It is a rhythm worth protecting.` | Proof / experience bridge | A clean philosophical pause |
-| 6 | `slide-06` | scene | `Beforest is where recovery becomes real.` | Experience | Makes the collective tangible across locations |
-| 7 | `slide-07` | scene | `Access changes behaviour faster than ownership.` | Clarity | Explains 30 person-nights, 10 years, access model |
-| 8 | `slide-08` | quote | `You decide with your feet, not your eyes.` | Urgency / action bridge | Prepares the move into action |
-| 9 | `slide-09` | scene | `The cost of waiting is another year unchanged.` | Urgency | Names the cost of postponement without pressure |
-| 10 | `slide-10` | cta | `Start with the smallest real step.` | Action | Moves to Blyton Bungalow trial stay |
+| Runtime beat | Maps to Canonical Stage | Purpose |
+|---|---|---|
+| Opening / fit | Tension + Reframe | Introduce Beforest, exhaustion, and the 10% access idea |
+| Desire / proof | Reframe + Proof | Connect the listener's need for silence to land, stewardship, and evidence |
+| Membership / trial | Experience + Clarity | Explain access without ownership and the practical trial-stay path |
+| Decision close | Urgency + Action | Route the listener toward Blyton Bungalow or the softer updates path |
 
 ---
 

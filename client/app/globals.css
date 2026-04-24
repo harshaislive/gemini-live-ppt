@@ -788,6 +788,7 @@ a:focus-visible {
 }
 
 .beforest-status--connecting,
+.beforest-status--recovering,
 .beforest-status--warming_intro {
   color: rgba(219, 193, 159, 0.94);
 }

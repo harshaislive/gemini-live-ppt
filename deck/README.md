@@ -12,7 +12,7 @@ The presentation theme is:
 
 ## What is in this folder
 
-- [`flow.md`](./flow.md) — full deck flow, story arc, slide-by-slide structure, and mapping between the canonical 7-slide story and the current 10-scene runtime deck
+- [`flow.md`](./flow.md) — full deck flow, story arc, source slide structure, and mapping between the canonical story and the current guided runtime agenda
 - [`beforest.md`](./beforest.md) — Beforest brand, voice, positioning, audience, collectives, and hard rules
 - [`10-percent.md`](./10-percent.md) — 10% Lifestyle membership structure, pricing framing, product rules, and CTA model
 - [`materials.md`](./materials.md) — where the deck content and supporting materials live across this repo and the linked source package
@@ -25,9 +25,9 @@ There are **two important deck representations**:
    - 7-slide emotional arc
    - Tension → Reframe → Proof → Experience → Clarity → Urgency → Action
 
-2. **Current runtime / narrated deck in this repo**
-   - 10 scenes in `presentation-content.ts`
-   - expands the story with quote/pause slides and a dedicated CTA close
+2. **Current runtime agenda in this repo**
+   - guided sections in `client/app/presentationAgenda.ts`
+   - uses modal gates and planner-controlled transitions instead of a fixed slide list
 
 ## Main takeaway
 
@@ -41,4 +41,3 @@ It is structured like a **guided emotional narrative**:
 5. explain the 10% structure clearly
 6. show the cost of waiting
 7. move to trial stay / action
-

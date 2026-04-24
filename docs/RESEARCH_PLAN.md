@@ -1,42 +1,43 @@
-# Beforest Gemini Live migration research plan
+# Beforest Gemini Live migration notes
 
-## Objective
-Rebuild the live Beforest presentation on top of the Pipecat Gemini Live starter so the realtime stack is stable while the UI stays editorial and calm.
+## Current direction
 
-## Why this starter is the right base
-- Native Gemini Live speech-to-speech pipeline
-- Pipecat-managed Daily transport instead of a fragile custom browser audio stack
-- Working transcription, interruption handling, and room lifecycle out of the box
-- Python tool-calling support in the bot layer
-- A Next.js frontend that can be fully re-skinned without touching the hard realtime plumbing
+The project has moved to a direct Gemini Live architecture. The browser connects to Gemini Live with a short-lived auth token minted by the Next.js backend, while approved Beforest knowledge and visuals are loaded from the local content bundle.
 
-## What was preserved from the previous project
-- Beforest visual language
-- ABC Arizona typography
-- The 10% Life framing and product context
-- Image-first presentation logic
-- Trial-stay CTA direction
+## Why this direction replaced the starter runtime
 
-## What was intentionally replaced
-- Custom client-side Gemini session wiring
-- Manual PCM recording and playback orchestration
-- Slide-advance logic coupled to raw transcript timing
-- The previous frontend app shell and server routes
+- The shipped app needs one deployable Next.js container, not separate realtime infrastructure.
+- Direct Gemini Live removes the Daily/Pipecat relay from the active path while keeping native speech, interruption, audio output, and transcription support.
+- Server routes can keep sensitive API-key work on the backend while the browser owns the real-time user interaction.
+- The content bundle remains deterministic: the app only retrieves from approved markdown and only displays curated images from the manifest.
+- The presentation agenda now lives in app code, so the voice model performs the current section instead of controlling the whole flow.
 
-## Research conclusions
-1. The old app's strongest asset is its UI taste and product context, not its transport architecture.
-2. The Pipecat starter already solves the unstable parts: Daily room creation, Gemini Live turn handling, audio transport, and transcription.
-3. The cleanest migration path is not slide automation first; it is a guided live conversation with strong image-tooling and knowledge retrieval.
-4. The frontend should listen for server visual messages so the backend can drive imagery through tool calls.
-5. Approved markdown knowledge and curated visuals should live beside the bot for deterministic retrieval.
+## Preserved from earlier exploration
 
-## Implementation targets
-- New repo scaffolded from the Pipecat starter
-- Beforest editorial frontend in `client/app/ClientApp.tsx`
+- Beforest visual language and Arizona typography
+- Image-first editorial presentation style
+- The 10% Life positioning and trial-stay CTA
 - Approved markdown knowledge in `server/content/knowledge`
 - Curated image manifest in `server/content/images/images.json`
-- Two server tools:
+
+## Replaced or removed from the active path
+
+- Pipecat Python bot runtime
+- Daily or LiveKit WebRTC room orchestration
+- RTVI server-message visual updates
+- Client configuration for a deployed bot start URL
+- Separate server process outside the Next.js app
+
+## Implementation targets now reflected in the repo
+
+- Next.js editorial frontend in `client/app/ClientApp.tsx`
+- Direct Gemini Live session handling through `@google/genai`
+- Ephemeral Live token route at `client/app/api/gemini-live-token/route.ts`
+- Passcode gate at `client/app/api/access/route.ts`
+- Presentation bootstrap route at `client/app/api/presentation-context/route.ts`
+- Planner route at `client/app/api/presentation-plan/route.ts`
+- Browser-executed tools:
   - `retrieve_beforest_knowledge`
   - `show_curated_image`
-- Startup auto-intro on room connect
-- CTA path to `https://hospitality.beforest.co`
+  - `ask_listener_question`
+- Single-container deployment through `Dockerfile` and `deploy/start-app.sh`

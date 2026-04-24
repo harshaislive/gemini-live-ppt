@@ -74,6 +74,7 @@ type LiveWarmupPhase =
   | "idle"
   | "preparing"
   | "connecting"
+  | "recovering"
   | "warming_intro"
   | "live_ready"
   | "live_unavailable";
@@ -214,6 +215,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const modalResponseInFlightRef = useRef(false);
   const bridgeNarrationTimerIdRef = useRef<number | null>(null);
   const hasReceivedModelAudioRef = useRef(false);
+  const reconnectTimerIdRef = useRef<number | null>(null);
+  const reconnectAttemptCountRef = useRef(0);
 
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
@@ -227,6 +230,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
       return "Preparing the presentation...";
+    }
+    if (liveWarmupPhase === "recovering") {
+      return "The live guide slipped for a moment. Rejoining this section now.";
     }
     if (liveWarmupPhase === "warming_intro") {
       return "Opening the live guide. Stay with this first scene while the voice locks in.";
@@ -287,6 +293,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
     if (liveWarmupPhase === "connecting") {
       return "Connecting live";
+    }
+    if (liveWarmupPhase === "recovering") {
+      return "Recovering live";
     }
     if (liveWarmupPhase === "warming_intro") {
       return "Holding the opening";
@@ -404,6 +413,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       if (bridgeNarrationTimerIdRef.current) {
         window.clearTimeout(bridgeNarrationTimerIdRef.current);
       }
+      if (reconnectTimerIdRef.current) {
+        window.clearTimeout(reconnectTimerIdRef.current);
+      }
       window.speechSynthesis?.cancel();
     };
   }, []);
@@ -445,6 +457,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       window.speechSynthesis.speak(utterance);
     }, delayMs);
   }, [cancelBridgeNarration, isSessionReady]);
+
+  const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerIdRef.current) {
+      window.clearTimeout(reconnectTimerIdRef.current);
+      reconnectTimerIdRef.current = null;
+    }
+  }, []);
 
   const ensureOutputAudioContext = useCallback(async () => {
     if (!audioContextRef.current) {
@@ -903,6 +922,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (extractAudioPayloadFromMessage(message)) {
       if (!hasReceivedModelAudioRef.current) {
         hasReceivedModelAudioRef.current = true;
+        reconnectAttemptCountRef.current = 0;
+        clearReconnectTimer();
         cancelBridgeNarration();
         setLiveWarmupPhase("live_ready");
       }
@@ -913,7 +934,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setIsAwaitingReply(false);
       setHasSegmentTurnCompleted(true);
     }
-  }, [cancelBridgeNarration, runToolCalls, scheduleAudioPlayback, stopPlayback]);
+  }, [cancelBridgeNarration, clearReconnectTimer, runToolCalls, scheduleAudioPlayback, stopPlayback]);
 
   async function handleAccessSubmit(event?: React.FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -1048,14 +1069,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     };
   }, [ensureGeminiToken, geminiToken, isAccessReady, isSessionReady]);
 
-  async function handleStart() {
-    if (isBusy || !isAccessReady || isSessionReady) {
+  async function handleStart(resumeMode = false) {
+    if (isBusy || !isAccessReady || (isSessionReady && !resumeMode)) {
       if (!isAccessReady) {
         setUiError("Add your name first so the guide can open the walkthrough properly.");
       }
       return;
     }
 
+    clearReconnectTimer();
     setIsStarting(true);
     setUiError(null);
     setBotTtsTranscript("");
@@ -1064,7 +1086,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     setDidMissUserTurn(false);
     setIsAwaitingReply(false);
     hasReceivedModelAudioRef.current = false;
-    setLiveWarmupPhase("preparing");
+    setLiveWarmupPhase(resumeMode ? "recovering" : "preparing");
     scheduleBridgeNarration();
 
     try {
@@ -1073,16 +1095,23 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       await ensurePresentationContext();
       const token = await ensureGeminiToken();
       setLiveWarmupPhase("connecting");
-      setCompletedSections([]);
-      completedSectionsRef.current = [];
-      setFallbackModalSections([]);
       setHasSegmentTurnCompleted(false);
       pendingPromptModalRef.current = null;
-      currentSegmentIdRef.current = FIRST_SEGMENT_ID;
-      currentSectionIdRef.current = getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId;
-      setCurrentSegmentId(FIRST_SEGMENT_ID);
-      setCurrentSectionId(getPresentationSegment(FIRST_SEGMENT_ID).gateSectionId);
-      presentationStartedAtRef.current = Date.now();
+
+      const nextSegmentId = resumeMode ? currentSegmentIdRef.current : FIRST_SEGMENT_ID;
+      const nextSectionId = getPresentationSegment(nextSegmentId).gateSectionId;
+
+      if (!resumeMode) {
+        setCompletedSections([]);
+        completedSectionsRef.current = [];
+        setFallbackModalSections([]);
+        currentSegmentIdRef.current = FIRST_SEGMENT_ID;
+        currentSectionIdRef.current = nextSectionId;
+        setCurrentSegmentId(FIRST_SEGMENT_ID);
+        setCurrentSectionId(nextSectionId);
+        presentationStartedAtRef.current = Date.now();
+      }
+
       const ai = new GoogleGenAI({ apiKey: token.name, apiVersion: "v1alpha" });
 
       const toolDeclarations: FunctionDeclaration[] = [
@@ -1152,7 +1181,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           onerror: (event: ErrorEvent) => {
             sessionRef.current = null;
             cancelBridgeNarration();
-            setUiError(event.message || "Gemini Live connection failed.");
             setIsStarting(false);
             setIsSessionReady(false);
             setIsAwaitingReply(false);
@@ -1160,10 +1188,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setHasSegmentTurnCompleted(false);
             pendingPromptModalRef.current = null;
             modalResponseInFlightRef.current = false;
-            setLiveWarmupPhase("live_unavailable");
             stopRecorder();
             stopPlayback();
             stopAmbientBed();
+            queueReconnect(event.message || "Gemini Live connection failed.");
           },
           onclose: () => {
             sessionRef.current = null;
@@ -1176,10 +1204,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             setHasSegmentTurnCompleted(false);
             pendingPromptModalRef.current = null;
             modalResponseInFlightRef.current = false;
-            setLiveWarmupPhase("live_unavailable");
             stopRecorder();
             stopPlayback();
             stopAmbientBed();
+            queueReconnect("Gemini Live closed unexpectedly.");
           },
         },
         config: {
@@ -1199,17 +1227,46 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
       sessionRef.current = liveSession;
       setGeminiToken(null);
-      sendPresenterSegment(FIRST_SEGMENT_ID, undefined, undefined, liveSession);
+      sendPresenterSegment(
+        nextSegmentId,
+        undefined,
+        resumeMode
+          ? "The live session dropped. Re-enter this current section in one sentence, then continue naturally without replaying the entire opening."
+          : undefined,
+        liveSession,
+      );
     } catch (error) {
       sessionRef.current = null;
       cancelBridgeNarration();
       stopAmbientBed();
       stopRecorder();
       setGeminiToken(null);
-      setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
       setIsStarting(false);
-      setLiveWarmupPhase("live_unavailable");
+      if (resumeMode) {
+        queueReconnect(error instanceof Error ? error.message : "Unable to restore Gemini Live.");
+      } else {
+        setUiError(error instanceof Error ? error.message : "Unable to begin the live walkthrough.");
+        setLiveWarmupPhase("live_unavailable");
+      }
     }
+  }
+
+  function queueReconnect(errorMessage: string) {
+    if (!hasEverConnected || reconnectAttemptCountRef.current >= 1) {
+      clearReconnectTimer();
+      setUiError(errorMessage);
+      setLiveWarmupPhase("live_unavailable");
+      return;
+    }
+
+    reconnectAttemptCountRef.current += 1;
+    clearReconnectTimer();
+    setUiError(null);
+    setLiveWarmupPhase("recovering");
+    reconnectTimerIdRef.current = window.setTimeout(() => {
+      reconnectTimerIdRef.current = null;
+      void handleStart(true);
+    }, 1200);
   }
 
   useEffect(() => {
@@ -1453,6 +1510,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   function handleRetryLive() {
     cancelBridgeNarration();
+    clearReconnectTimer();
+    reconnectAttemptCountRef.current = 0;
     stopRecorder();
     stopPlayback();
     stopAmbientBed();

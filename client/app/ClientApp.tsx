@@ -48,6 +48,7 @@ type PresentationContext = {
 
 type GeminiToken = {
   name: string;
+  model: string;
   newSessionExpireTime: string;
   expireTime: string;
   fetchedAt: number;
@@ -131,6 +132,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const sessionRef = useRef<Session | null>(null);
   const liveConnectPromiseRef = useRef<Promise<Session> | null>(null);
   const liveSocketOpenRef = useRef(false);
+  const liveQuestionActiveRef = useRef(false);
   const recorderRef = useRef<RecorderState | null>(null);
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const activeLiveSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
@@ -231,6 +233,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       if (outputAudioContextRef.current) {
         void outputAudioContextRef.current.close();
       }
+      liveQuestionActiveRef.current = false;
       clearAnswerTimeout();
     };
   }, []);
@@ -453,6 +456,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (!shouldResumeNarratorRef.current || promptModal) {
       return;
     }
+    liveQuestionActiveRef.current = false;
     shouldResumeNarratorRef.current = false;
     const audio = audioRef.current;
     if (!audio || !isPresentationStarted) {
@@ -641,7 +645,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         markLiveOpen = resolve;
       });
       const liveSession = await ai.live.connect({
-        model: MODEL,
+        model: token.model || MODEL,
         callbacks: {
           onopen: () => {
             liveSocketOpenRef.current = true;
@@ -660,7 +664,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             stopRecorder();
             stopLivePlayback();
             clearAnswerTimeout();
-            window.setTimeout(resumeNarratorAfterLive, 300);
+            if (!liveQuestionActiveRef.current) {
+              window.setTimeout(resumeNarratorAfterLive, 300);
+            }
           },
           onclose: () => {
             liveSocketOpenRef.current = false;
@@ -669,7 +675,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             stopRecorder();
             clearAnswerTimeout();
             setLivePhase((phase) => phase === "answering" && activeLiveSourcesRef.current.size ? phase : "idle");
-            if (!activeLiveSourcesRef.current.size) {
+            if (!activeLiveSourcesRef.current.size && !liveQuestionActiveRef.current) {
               window.setTimeout(resumeNarratorAfterLive, 300);
             }
           },
@@ -709,6 +715,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
     pauseNarratorForMic();
+    liveQuestionActiveRef.current = true;
     setUiError(null);
     setUserTranscript("");
     setBotTtsTranscript("");
@@ -770,7 +777,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       sessionRef.current = null;
       liveConnectPromiseRef.current = null;
       liveSocketOpenRef.current = false;
-      window.setTimeout(resumeNarratorAfterLive, 300);
+      liveQuestionActiveRef.current = false;
     }
   }
 
@@ -799,6 +806,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const recorder = recorderRef.current;
     stopRecorder();
     if (!recorder?.hasSpeech) {
+      liveQuestionActiveRef.current = false;
       if (liveSocketOpenRef.current) {
         sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
       }
@@ -807,6 +815,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
     setLivePhase("answering");
+    liveQuestionActiveRef.current = false;
     if (liveSocketOpenRef.current) {
       sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
       scheduleAnswerFallback();

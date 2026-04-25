@@ -12,6 +12,7 @@ export async function POST(req: NextRequest) {
     const passcode = getServerEnv("PRESENTATION_PASSCODE")?.trim() || "";
     const googleApiKey = getServerEnv("GOOGLE_API_KEY");
     const googleVoiceId = getServerEnv("GOOGLE_VOICE_ID") || "Gacrux";
+    const liveModel = getServerEnv("GEMINI_LIVE_MODEL") || "gemini-2.5-flash-native-audio-preview-12-2025";
 
     if (passcode && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
       return new NextResponse("Presentation access is locked.", { status: 401 });
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest) {
       newSessionExpireTime,
       expireTime,
       liveConnectConstraints: {
-        model: getServerEnv("GEMINI_LIVE_MODEL") || "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: liveModel,
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction,
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
     };
 
     const token = await ai.authTokens.create({ config });
-    return NextResponse.json({ name: token.name, newSessionExpireTime, expireTime });
+    return NextResponse.json({ name: token.name, model: liveModel, newSessionExpireTime, expireTime });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to create Gemini token";
     return new NextResponse(message, { status: 500 });

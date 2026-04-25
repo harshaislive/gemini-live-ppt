@@ -54,6 +54,7 @@ type GeminiToken = {
   newSessionExpireTime: string;
   expireTime: string;
   fetchedAt: number;
+  runtimeContext: string;
 };
 
 type LivePhase = "idle" | "connecting" | "listening" | "answering" | "unavailable";
@@ -173,7 +174,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const activeLiveSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextLivePlaybackTimeRef = useRef(0);
   const answerTimeoutRef = useRef<number | null>(null);
+  const liveAnswerResumeTimeoutRef = useRef<number | null>(null);
   const pendingBotTranscriptRef = useRef("");
+  const userTranscriptRef = useRef("");
   const shouldResumeNarratorRef = useRef(false);
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
@@ -330,8 +333,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     return data;
   }
 
-  async function ensureGeminiToken(runtimeContext?: string) {
-    if (!runtimeContext && geminiToken && Date.parse(geminiToken.newSessionExpireTime) - Date.now() > GEMINI_TOKEN_REFRESH_BUFFER_MS) {
+  async function ensureGeminiToken(runtimeContext = "") {
+    if (
+      geminiToken &&
+      geminiToken.runtimeContext === runtimeContext &&
+      Date.parse(geminiToken.newSessionExpireTime) - Date.now() > GEMINI_TOKEN_REFRESH_BUFFER_MS
+    ) {
       return geminiToken;
     }
     const response = await fetch("/api/gemini-live-token", {
@@ -343,8 +350,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       throw new Error(await response.text());
     }
     const token = {
-      ...((await response.json()) as Omit<GeminiToken, "fetchedAt">),
+      ...((await response.json()) as Omit<GeminiToken, "fetchedAt" | "runtimeContext">),
       fetchedAt: Date.now(),
+      runtimeContext,
     };
     setGeminiToken(token);
     return token;
@@ -502,6 +510,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       audio.currentTime = 0;
     }
     setBotTtsTranscript("");
+    setUserTranscript("");
+    userTranscriptRef.current = "";
+    pendingBotTranscriptRef.current = "";
     setIsNarratorPaused(false);
     void audio.play().catch(() => setIsNarratorPaused(true));
   }
@@ -546,6 +557,38 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
   }
 
+  function clearLiveAnswerResumeTimeout() {
+    if (liveAnswerResumeTimeoutRef.current) {
+      window.clearTimeout(liveAnswerResumeTimeoutRef.current);
+      liveAnswerResumeTimeoutRef.current = null;
+    }
+  }
+
+  function closeLiveSessionSoon() {
+    window.setTimeout(() => {
+      void sessionRef.current?.close?.();
+      sessionRef.current = null;
+      liveConnectPromiseRef.current = null;
+      liveSocketOpenRef.current = false;
+    }, 120);
+  }
+
+  function scheduleNarratorResumeAfterAnswer(delayMs = 650) {
+    if (liveAnswerResumeTimeoutRef.current) {
+      return;
+    }
+    liveAnswerResumeTimeoutRef.current = window.setTimeout(() => {
+      liveAnswerResumeTimeoutRef.current = null;
+      if (activeLiveSourcesRef.current.size) {
+        scheduleNarratorResumeAfterAnswer(300);
+        return;
+      }
+      setLivePhase("idle");
+      resumeNarratorAfterLive();
+      closeLiveSessionSoon();
+    }, delayMs);
+  }
+
   function scheduleAnswerFallback() {
     clearAnswerTimeout();
     answerTimeoutRef.current = window.setTimeout(() => {
@@ -553,7 +596,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       if (!liveSocketOpenRef.current || !sessionRef.current || activeLiveSourcesRef.current.size) {
         return;
       }
-      const question = userTranscript.trim();
+      const question = userTranscriptRef.current.trim();
+      if (!question) {
+        setUiError("I could not catch the question clearly. Please tap the mic and ask once more.");
+        setLivePhase("idle");
+        resumeNarratorAfterLive();
+        closeLiveSessionSoon();
+        return;
+      }
       try {
         sessionRef.current.sendClientContent({
           turns: [{
@@ -561,9 +611,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             parts: [{
               text: [
                 "The listener just asked a question during the paused presentation.",
-                question ? `Live transcript: ${question}` : "Use the spoken question you just received.",
+                `Live transcript: ${question}`,
                 buildLiveTelemetryPrompt(currentChunk),
-                "Answer briefly, then hand back to the narrator with the return line.",
+                "Answer this specific listener question briefly. Do not repeat a previous answer. End with the return line.",
               ].join("\n"),
             }],
           }],
@@ -600,9 +650,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       activeLiveSourcesRef.current.delete(source);
       if (!activeLiveSourcesRef.current.size) {
         setIsBotSpeaking(false);
-        if (livePhase === "answering") {
-          window.setTimeout(resumeNarratorAfterLive, 650);
-        }
+        scheduleNarratorResumeAfterAnswer(650);
       }
     };
     activeLiveSourcesRef.current.add(source);
@@ -614,7 +662,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (message.serverContent?.inputTranscription?.text) {
       const text = message.serverContent.inputTranscription.text.trim();
       if (text) {
-        setUserTranscript(text);
+        userTranscriptRef.current = mergeRollingWords(userTranscriptRef.current, text, 48);
+        setUserTranscript(userTranscriptRef.current);
       }
     }
     if (message.serverContent?.outputTranscription?.text) {
@@ -635,16 +684,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (message.serverContent?.turnComplete || message.serverContent?.generationComplete) {
       setLivePhase("answering");
       if (!activeLiveSourcesRef.current.size) {
-        window.setTimeout(resumeNarratorAfterLive, 900);
+        scheduleNarratorResumeAfterAnswer(900);
       }
-      window.setTimeout(() => {
-        void sessionRef.current?.close?.();
-        sessionRef.current = null;
-        liveConnectPromiseRef.current = null;
-        if (!activeLiveSourcesRef.current.size) {
-          setLivePhase("idle");
-        }
-      }, 1500);
     }
   }
 
@@ -672,6 +713,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
     setLivePhase("connecting");
     pendingBotTranscriptRef.current = "";
+    userTranscriptRef.current = "";
     setBotTtsTranscript("");
     const promise = (async () => {
       const token = await ensureGeminiToken(buildLiveTelemetryPrompt(currentChunk));
@@ -686,7 +728,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           onopen: () => {
             liveSocketOpenRef.current = true;
             markLiveOpen?.();
-            setLivePhase("listening");
+            if (liveQuestionActiveRef.current) {
+              setLivePhase("listening");
+            }
           },
           onmessage: (message: LiveServerMessage) => {
             void handleLiveMessage(message);
@@ -700,6 +744,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             stopRecorder();
             stopLivePlayback();
             clearAnswerTimeout();
+            clearLiveAnswerResumeTimeout();
             if (!liveQuestionActiveRef.current) {
               window.setTimeout(resumeNarratorAfterLive, 300);
             }
@@ -759,13 +804,23 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     }
     pauseNarratorForMic();
     liveQuestionActiveRef.current = true;
+    clearLiveAnswerResumeTimeout();
     setUiError(null);
     setUserTranscript("");
+    userTranscriptRef.current = "";
+    pendingBotTranscriptRef.current = "";
     setBotTtsTranscript("");
 
+    const openedStreams: MediaStream[] = [];
+    let pendingSessionPromise: Promise<Session> | null = null;
     try {
-      const session = await ensureLiveSession();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const streamPromise = navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        openedStreams.push(stream);
+        return stream;
+      });
+      const sessionPromise = ensureLiveSession();
+      pendingSessionPromise = sessionPromise;
+      const [session, stream] = await Promise.all([sessionPromise, streamPromise]);
       const context = new AudioContext({ sampleRate: 16000 });
       if (context.state === "suspended") {
         await context.resume();
@@ -843,13 +898,16 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     } catch (error) {
       setLivePhase("unavailable");
       setUiError(getMicrophoneRuntimeError(error));
+      openedStreams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
       stopRecorder();
       clearAnswerTimeout();
+      clearLiveAnswerResumeTimeout();
+      liveQuestionActiveRef.current = false;
+      void pendingSessionPromise?.then((session) => session.close()).catch(() => undefined);
       void sessionRef.current?.close?.();
       sessionRef.current = null;
       liveConnectPromiseRef.current = null;
       liveSocketOpenRef.current = false;
-      liveQuestionActiveRef.current = false;
       window.setTimeout(resumeNarratorAfterLive, 300);
     }
   }

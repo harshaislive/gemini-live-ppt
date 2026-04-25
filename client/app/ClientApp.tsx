@@ -251,14 +251,14 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (!video) {
       return;
     }
-    if (isLiveFocus || promptModal) {
+    if (isLiveFocus || promptModal || isNarratorPaused) {
       video.pause();
       return;
     }
     void video.play().catch(() => {
       // Browser autoplay policies can still block resumed background video.
     });
-  }, [isLiveFocus, promptModal, visual.videoUrl]);
+  }, [isLiveFocus, isNarratorPaused, promptModal, visual.videoUrl]);
 
   useEffect(() => {
     if (!isPresentationStarted || promptModal) {
@@ -779,6 +779,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       liveConnectPromiseRef.current = null;
       liveSocketOpenRef.current = false;
       liveQuestionActiveRef.current = false;
+      window.setTimeout(resumeNarratorAfterLive, 300);
     }
   }
 
@@ -806,11 +807,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   async function handleCloseMic() {
     const recorder = recorderRef.current;
     stopRecorder();
-    if (!recorder?.hasSpeech) {
+    if (!recorder) {
       liveQuestionActiveRef.current = false;
-      if (liveSocketOpenRef.current) {
-        sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
-      }
       setLivePhase("idle");
       resumeNarratorAfterLive();
       return;

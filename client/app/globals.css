@@ -1645,8 +1645,8 @@ a:focus-visible {
 
   .beforest-bottom-ui {
     width: calc(100vw - 28px);
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
-    gap: 12px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    gap: 10px;
   }
 
   .beforest-subtitle {
@@ -1661,22 +1661,37 @@ a:focus-visible {
   }
 
   .beforest-action-row {
-    width: 100%;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: stretch;
+    width: auto;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 58px;
+    justify-content: center;
+    gap: 10px;
+    padding: 7px;
+    border: 1px solid rgba(231, 228, 223, 0.16);
+    border-radius: 999px;
+    background: rgba(52, 46, 41, 0.66);
+    backdrop-filter: blur(10px);
   }
 
   .beforest-mic-button,
   .beforest-secondary-action {
-    width: 100%;
+    width: 58px;
     min-width: 0;
     height: 58px;
     min-height: 58px;
+    padding: 0;
+    justify-content: center;
   }
 
   .beforest-mic-button {
-    justify-content: flex-start;
+    gap: 0;
+  }
+
+  .beforest-mic-button:not(.is-live) {
+    width: auto;
+    min-width: 13.5rem;
+    gap: 10px;
     padding: 0 18px 0 8px;
   }
 
@@ -1685,15 +1700,29 @@ a:focus-visible {
     height: 46px;
   }
 
-  .beforest-action-label {
-    min-width: 0;
-    white-space: normal;
-    line-height: 1.1;
+  .beforest-mic-button.is-live .beforest-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .beforest-secondary-action {
+    font-size: 0;
+  }
+
+  .beforest-secondary-action svg {
+    width: 20px;
+    height: 20px;
   }
 
   .beforest-mic-hint {
-    max-width: min(100%, 23rem);
-    font-size: 0.7rem;
+    display: none;
   }
 
   .beforest-live-focus__mark {

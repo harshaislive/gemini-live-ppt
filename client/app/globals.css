@@ -32,8 +32,7 @@ html {
 body {
   margin: 0;
   min-height: 100dvh;
-  background:
-    linear-gradient(180deg, #342e29 0%, #2f2a25 42%, #344736 100%);
+  background: #342e29;
   color: var(--foreground);
   font-family: var(--font-arizona-sans), ui-sans-serif, system-ui, sans-serif;
   text-rendering: optimizeLegibility;
@@ -1333,17 +1332,11 @@ a:focus-visible {
 }
 
 .beforest-story__scrim {
-  background:
-    linear-gradient(180deg, rgba(52, 46, 41, 0.22) 0%, rgba(52, 46, 41, 0.05) 28%, rgba(52, 46, 41, 0.52) 72%, rgba(52, 46, 41, 0.94) 100%),
-    linear-gradient(90deg, rgba(52, 71, 54, 0.36), transparent 58%),
-    radial-gradient(circle at center, transparent 54%, rgba(52, 46, 41, 0.2) 100%);
+  background: rgba(52, 46, 41, 0.34);
 }
 
 .beforest-story.is-live-focus .beforest-story__scrim {
-  background:
-    linear-gradient(180deg, rgba(52, 46, 41, 0.5) 0%, rgba(52, 46, 41, 0.24) 48%, rgba(52, 46, 41, 0.94) 100%),
-    radial-gradient(circle at 50% 43%, rgba(184, 220, 153, 0.1), transparent 32%),
-    linear-gradient(90deg, rgba(52, 71, 54, 0.6), rgba(52, 46, 41, 0.16));
+  background: rgba(52, 46, 41, 0.68);
 }
 
 .beforest-heading {
@@ -1399,8 +1392,8 @@ a:focus-visible {
   text-align: center;
   text-shadow: 0 12px 32px rgba(20, 16, 13, 0.5);
   transition:
-    opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 520ms cubic-bezier(0.16, 1, 0.3, 1);
+    opacity 260ms ease,
+    transform 260ms ease;
 }
 
 .beforest-subtitle.is-live {
@@ -1420,25 +1413,19 @@ a:focus-visible {
 .beforest-subtitle-word {
   color: inherit;
   transition:
-    color 620ms cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 620ms cubic-bezier(0.16, 1, 0.3, 1),
-    filter 620ms cubic-bezier(0.16, 1, 0.3, 1);
+    color 220ms ease,
+    opacity 220ms ease;
 }
 
 .beforest-subtitle-word.is-tracked {
   display: inline-block;
   color: rgba(253, 251, 247, 0.42);
-  opacity: 0.72;
-  transform: translateY(1px) scale(0.92);
-  filter: blur(0.12px);
+  opacity: 0.7;
 }
 
 .beforest-subtitle-word.is-tracked.is-near {
   color: rgba(253, 251, 247, 0.62);
-  opacity: 0.9;
-  transform: translateY(0) scale(0.97);
-  filter: blur(0);
+  opacity: 0.86;
 }
 
 .beforest-subtitle-word.is-tracked.is-edge {
@@ -1453,8 +1440,6 @@ a:focus-visible {
 .beforest-subtitle-word.is-tracked.is-current {
   color: var(--off-white);
   opacity: 1;
-  transform: translateY(0) scale(1.08);
-  filter: blur(0);
   text-shadow:
     0 0 1px rgba(253, 251, 247, 0.28),
     0 10px 28px rgba(20, 16, 13, 0.46);
@@ -1481,9 +1466,7 @@ a:focus-visible {
   min-width: 15rem;
   height: 64px;
   border-color: rgba(231, 228, 223, 0.22);
-  background:
-    linear-gradient(180deg, rgba(253, 251, 247, 0.08), rgba(253, 251, 247, 0.02)),
-    rgba(52, 46, 41, 0.78);
+  background: rgba(52, 46, 41, 0.78);
   box-shadow: 0 20px 42px rgba(20, 16, 13, 0.24);
   transition:
     transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -1492,9 +1475,7 @@ a:focus-visible {
 }
 
 .beforest-mic-button__surface {
-  background:
-    linear-gradient(180deg, rgba(253, 251, 247, 0.18), rgba(253, 251, 247, 0.06)),
-    rgba(52, 46, 41, 0.9);
+  background: rgba(52, 46, 41, 0.9);
 }
 
 .beforest-action-label {
@@ -1506,9 +1487,7 @@ a:focus-visible {
 .beforest-mic-button.is-open,
 .beforest-mic-button.is-speaking {
   border-color: rgba(184, 220, 153, 0.38);
-  background:
-    linear-gradient(180deg, rgba(184, 220, 153, 0.14), rgba(253, 251, 247, 0.03)),
-    rgba(52, 71, 54, 0.86);
+  background: rgba(52, 71, 54, 0.86);
   transform: scale(0.985);
 }
 
@@ -1581,7 +1560,7 @@ a:focus-visible {
 .beforest-live-focus__mark span:nth-child(3) {
   width: 1px;
   height: 48%;
-  background: linear-gradient(180deg, transparent, rgba(253, 251, 247, 0.22), transparent);
+  background: rgba(253, 251, 247, 0.18);
   transform-origin: 50% 100%;
 }
 

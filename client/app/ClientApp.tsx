@@ -868,13 +868,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   function renderTrackedNarrationSubtitle() {
     const words = currentChunk.transcript.split(/\s+/).filter(Boolean);
-    const duration = audioRef.current?.duration && Number.isFinite(audioRef.current.duration)
-      ? audioRef.current.duration
-      : currentChunk.durationSeconds;
-    const ratio = Math.max(0, Math.min(1, narratorElapsedSeconds / Math.max(1, duration)));
-    const currentWordIndex = Math.min(words.length - 1, Math.max(0, Math.floor(ratio * words.length)));
-    const start = Math.max(0, currentWordIndex - 2);
-    const end = Math.min(words.length, currentWordIndex + 3);
+    const wordsPerPhrase = 5;
+    const phraseSeconds = 2.7;
+    const phraseIndex = Math.max(0, Math.floor(narratorElapsedSeconds / phraseSeconds));
+    const start = Math.min(
+      Math.max(0, words.length - wordsPerPhrase),
+      phraseIndex * wordsPerPhrase,
+    );
+    const end = Math.min(words.length, start + wordsPerPhrase);
+    const currentWordIndex = Math.min(end - 1, start + 2);
     const visibleWords = words.slice(start, end);
 
     return visibleWords.map((word, index) => {

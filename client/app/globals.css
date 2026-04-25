@@ -2106,16 +2106,18 @@ a:focus-visible {
   top: 50%;
   z-index: 4;
   width: min(88vw, 46rem);
+  height: auto;
   max-height: min(54dvh, 28rem);
   transform: translate(-50%, -50%);
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   padding: clamp(18px, 3vw, 28px);
   border: 1px solid rgba(253, 251, 247, 0.16);
   background: rgba(52, 46, 41, 0.82);
   box-shadow: 0 30px 90px rgba(20, 16, 13, 0.36);
   color: var(--off-white);
-  overflow: hidden;
+  overflow: clip;
 }
 
 .beforest-live-answer__meta {
@@ -2141,14 +2143,19 @@ a:focus-visible {
 
 .beforest-live-answer__text {
   margin: 0;
+  min-height: 0;
   max-height: calc(min(54dvh, 28rem) - 78px);
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 8px;
   color: rgba(253, 251, 247, 0.9);
   font-size: clamp(1.1rem, 2.2vw, 1.52rem);
   line-height: 1.38;
   letter-spacing: 0;
   text-wrap: pretty;
   white-space: pre-wrap;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 192, 131, 0.52) rgba(253, 251, 247, 0.08);
 }

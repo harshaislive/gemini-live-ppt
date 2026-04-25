@@ -938,6 +938,15 @@ export const ClientApp: React.FC = () => {
       resumeNarratorAfterLive();
       return;
     }
+    if (!recorder.hasSpeech && !userTranscriptRef.current.trim()) {
+      liveQuestionActiveRef.current = false;
+      setLivePhase("idle");
+      setBotTtsTranscript("");
+      setLiveAnswerText("");
+      closeLiveSessionSoon();
+      resumeNarratorAfterLive();
+      return;
+    }
     setLivePhase("answering");
     liveQuestionActiveRef.current = false;
     if (liveSocketOpenRef.current) {

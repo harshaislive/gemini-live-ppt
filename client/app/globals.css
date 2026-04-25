@@ -1893,3 +1893,286 @@ a:focus-visible {
     border-radius: 16px;
   }
 }
+
+/* Editorial cleanup: one subtitle line, one control surface, no nested frames. */
+.beforest-screen-frame {
+  display: none;
+}
+
+.beforest-story__overlay {
+  padding: clamp(20px, 3.2vw, 46px);
+}
+
+.beforest-story__scrim {
+  background:
+    linear-gradient(180deg, rgba(20, 16, 13, 0.38) 0%, rgba(20, 16, 13, 0.06) 32%, rgba(20, 16, 13, 0.18) 58%, rgba(20, 16, 13, 0.76) 100%);
+}
+
+.beforest-heading {
+  left: clamp(20px, 4.2vw, 64px);
+  top: clamp(34px, 5vw, 68px);
+  max-width: min(31ch, calc(100vw - 52px));
+}
+
+.beforest-heading__title {
+  max-width: 13ch;
+  font-size: clamp(1.85rem, 3.6vw, 3.65rem);
+  line-height: 0.96;
+  letter-spacing: -0.032em;
+}
+
+.beforest-heading__kicker {
+  margin-bottom: 10px;
+  color: var(--sand);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+}
+
+.beforest-bottom-ui {
+  gap: 11px;
+  width: min(88vw, 46rem);
+}
+
+.beforest-status {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: rgba(253, 251, 247, 0.7);
+  box-shadow: none;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+}
+
+.beforest-inline-error {
+  width: min(100%, 36rem);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--sand);
+  font-family: var(--font-arizona-flare), Georgia, serif;
+  font-size: clamp(0.94rem, 2.2vw, 1.12rem);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.beforest-subtitle,
+.beforest-subtitle.is-live,
+.beforest-subtitle.is-tracked {
+  display: block;
+  width: min(100%, 48rem);
+  min-height: 1.45em;
+  max-width: calc(100vw - 48px);
+  color: rgba(253, 251, 247, 0.82);
+  font-size: clamp(1.1rem, 2.3vw, 1.46rem);
+  line-height: 1.22;
+  letter-spacing: -0.008em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 10px 30px rgba(20, 16, 13, 0.72);
+}
+
+.beforest-subtitle-word,
+.beforest-subtitle-word.is-tracked,
+.beforest-subtitle-word.is-near,
+.beforest-subtitle-word.is-edge,
+.beforest-subtitle-word.is-current {
+  color: inherit;
+  opacity: 1;
+  text-shadow: inherit;
+}
+
+.beforest-mic-hint {
+  display: none;
+}
+
+.beforest-action-row,
+.beforest-action-row.is-started,
+.beforest-action-row.is-start {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.beforest-mic-button,
+.beforest-secondary-action,
+.beforest-action-row.is-started .beforest-mic-button,
+.beforest-action-row.is-started .beforest-secondary-action {
+  min-width: 0;
+  width: auto;
+  height: 56px;
+  min-height: 56px;
+  padding: 0 18px;
+  border: 1px solid rgba(253, 251, 247, 0.18);
+  border-radius: 2px;
+  background: rgba(52, 46, 41, 0.5);
+  box-shadow: none;
+  backdrop-filter: none;
+  gap: 10px;
+}
+
+.beforest-action-row.is-started .beforest-mic-button {
+  width: 56px;
+  padding: 0;
+}
+
+.beforest-action-row.is-started .beforest-secondary-action {
+  width: 56px;
+  padding: 0;
+  font-size: 0;
+}
+
+.beforest-action-row.is-start .beforest-mic-button {
+  width: auto;
+  min-width: 13rem;
+  border-radius: 2px;
+}
+
+.beforest-mic-button__surface,
+.beforest-action-row.is-started .beforest-mic-button__surface {
+  width: auto;
+  height: auto;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.beforest-mic-button.is-open,
+.beforest-mic-button.is-speaking,
+.beforest-mic-button.is-open .beforest-mic-button__surface,
+.beforest-mic-button.is-speaking .beforest-mic-button__surface {
+  border-color: rgba(184, 220, 153, 0.44);
+  background: rgba(52, 71, 54, 0.56);
+}
+
+.beforest-action-label {
+  font-family: var(--font-arizona-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.beforest-action-row.is-started .beforest-action-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.beforest-access-card {
+  width: min(100%, 25rem);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 8px;
+}
+
+.beforest-access-input,
+.beforest-access-button {
+  border-radius: 2px;
+}
+
+.beforest-access-input {
+  border: 1px solid rgba(253, 251, 247, 0.18);
+  background: rgba(52, 46, 41, 0.38);
+}
+
+.beforest-access-button {
+  border: 0;
+  background: var(--sand);
+}
+
+.beforest-live-focus__mark {
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.beforest-live-focus__mark span:nth-child(1) {
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(184, 220, 153, 0.78);
+  border-radius: 50%;
+  background: rgba(184, 220, 153, 0.24);
+}
+
+.beforest-live-focus p {
+  top: calc(50% + 28px);
+  font-size: 0.68rem;
+}
+
+@media (max-width: 768px) {
+  .beforest-story__overlay {
+    padding: 18px;
+  }
+
+  .beforest-heading {
+    left: 18px;
+    top: calc(env(safe-area-inset-top, 0px) + 28px);
+    max-width: min(22ch, calc(100vw - 36px));
+  }
+
+  .beforest-heading__title {
+    font-size: clamp(1.58rem, 7.2vw, 2.2rem);
+    line-height: 0.98;
+  }
+
+  .beforest-bottom-ui {
+    width: calc(100vw - 36px);
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    gap: 9px;
+  }
+
+  .beforest-subtitle,
+  .beforest-subtitle.is-live,
+  .beforest-subtitle.is-tracked {
+    width: min(100%, 22rem);
+    min-height: 1.35em;
+    font-size: clamp(1rem, 4.4vw, 1.18rem);
+  }
+
+  .beforest-inline-error {
+    width: min(100%, 22rem);
+    font-size: 0.92rem;
+  }
+
+  .beforest-mic-button,
+  .beforest-secondary-action,
+  .beforest-action-row.is-started .beforest-mic-button,
+  .beforest-action-row.is-started .beforest-secondary-action {
+    width: 52px;
+    height: 52px;
+    min-height: 52px;
+    padding: 0;
+  }
+
+  .beforest-action-row.is-start .beforest-mic-button {
+    width: min(100%, 13.5rem);
+    min-width: 0;
+    padding: 0 16px;
+  }
+}

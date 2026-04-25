@@ -982,19 +982,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     : "The presentation starts from committed audio, so there is no live wait at the beginning.";
 
   function renderSubtitle(text: string) {
-    const words = text.split(/(\s+)/);
-    const wordIndexes = words
-      .map((part, index) => (part.trim() ? index : -1))
-      .filter((index) => index >= 0);
-    const highlightStart = wordIndexes[Math.max(0, wordIndexes.length - 5)] ?? Number.POSITIVE_INFINITY;
-    return words.map((part, index) => (
-      <span
-        key={`${part}-${index}`}
-        className={index >= highlightStart && part.trim() ? "beforest-subtitle-word is-current" : "beforest-subtitle-word"}
-      >
-        {part}
-      </span>
-    ));
+    return text;
   }
 
   function renderTrackedNarrationSubtitle() {
@@ -1007,25 +995,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       phraseIndex * wordsPerPhrase,
     );
     const end = Math.min(words.length, start + wordsPerPhrase);
-    const currentWordIndex = Math.min(end - 1, start + 2);
-    const visibleWords = words.slice(start, end);
-
-    return visibleWords.map((word, index) => {
-      const absoluteIndex = start + index;
-      const distance = Math.abs(absoluteIndex - currentWordIndex);
-      const className = [
-        "beforest-subtitle-word",
-        "is-tracked",
-        distance === 0 ? "is-current" : "",
-        distance === 1 ? "is-near" : "",
-        distance === 2 ? "is-edge" : "",
-      ].filter(Boolean).join(" ");
-      return (
-        <span key={`${currentChunk.id}-${absoluteIndex}-${word}`} className={className}>
-          {word}
-        </span>
-      );
-    });
+    return words.slice(start, end).join(" ");
   }
 
   return (

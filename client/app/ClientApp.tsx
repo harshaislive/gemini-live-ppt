@@ -189,28 +189,6 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const canUsePrimaryAction = isAccessReady && !isPreparing && !promptModal && !isLiveBusy;
 
   const guideStage = isPresentationStarted ? currentChunk.stageLabel : "Beforest 10% Life";
-  const connectionLabel = useMemo(() => {
-    if (!isAccessReady) {
-      return "Awaiting entry";
-    }
-    if (!isPresentationStarted) {
-      return "Ready to play";
-    }
-    if (livePhase === "connecting") {
-      return "Opening live mic";
-    }
-    if (livePhase === "listening") {
-      return "Listening";
-    }
-    if (livePhase === "answering") {
-      return "Answering";
-    }
-    if (livePhase === "unavailable") {
-      return "Live unavailable";
-    }
-    return isNarratorPaused ? "Narrator paused" : "Narration playing";
-  }, [isAccessReady, isNarratorPaused, isPresentationStarted, livePhase]);
-
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
       return "Preparing the presentation...";
@@ -251,6 +229,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
   const isLiveFocus = isMicOpen || livePhase === "connecting" || livePhase === "answering";
+  const shouldShowDecisionCta = showDecisionCta && !isLiveFocus;
   const shouldTrackNarrationWords = isPresentationStarted && !isLiveFocus && !shouldShowAccessForm && !promptModal;
 
   useEffect(() => {
@@ -1062,11 +1041,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             <h1 className="beforest-heading__title">{visual.hook}</h1>
           </header>
 
-          <div className="beforest-bottom-ui">
-            <p className={`beforest-status beforest-status--${livePhase === "idle" ? "live_ready" : livePhase}`}>
-              {connectionLabel}
-            </p>
-
+          <div className={[
+            "beforest-bottom-ui",
+            showDecisionCta ? "is-cta-mode" : "",
+            isLiveFocus ? "is-live-mode" : "",
+          ].filter(Boolean).join(" ")}>
             {uiError ? (
               <p className="beforest-inline-error" role="alert">
                 {uiError}
@@ -1164,7 +1143,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
               </form>
             ) : null}
 
-            {showDecisionCta ? (
+            {shouldShowDecisionCta ? (
               <div className="beforest-cta-card">
                 <p className="beforest-cta-eyebrow">Choose the right next step</p>
                 <h2 className="beforest-cta-title">The land will explain this more clearly than a pitch.</h2>

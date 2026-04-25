@@ -6,12 +6,19 @@ import {
   type CreateAuthTokenConfig,
 } from "@google/genai/node";
 import { NextRequest, NextResponse } from "next/server";
-import { buildSystemInstruction } from "@/lib/beforest-runtime";
+import { buildSystemInstruction, loadKnowledgeChunks } from "@/lib/beforest-runtime";
 import { getServerEnv } from "@/lib/server-env";
 
 const ACCESS_COOKIE = "beforest_presentation_access";
 
 export const revalidate = 0;
+
+function formatApprovedKnowledge(chunks: Awaited<ReturnType<typeof loadKnowledgeChunks>>) {
+  return chunks
+    .map((chunk) => `- ${chunk.source}/${chunk.section}: ${chunk.content}`)
+    .join("\n")
+    .slice(0, 9000);
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,8 +47,11 @@ export async function POST(req: NextRequest) {
       apiVersion: "v1alpha",
     });
 
+    const approvedKnowledge = formatApprovedKnowledge(await loadKnowledgeChunks());
+
     const systemInstruction =
       buildSystemInstruction() +
+      `\n\nApproved Beforest knowledge available for listener interruptions:\n${approvedKnowledge}\n\nGrounding rule:\n- Use this approved knowledge to answer factual questions, including questions about Blyton Bungalow.\n- If asked where Blyton Bungalow is, answer directly: Blyton Bungalow is in Coorg, and it is the pilot trial stay path.\n- Do not say you lack information when the answer appears in the approved knowledge above.` +
       (firstName
         ? `\n\nListener note:\n- The current listener's first name is ${firstName}. Use their name sparingly and naturally when it helps warmth or clarity. Do not force it into every answer, every opening, or every close.`
         : "") +

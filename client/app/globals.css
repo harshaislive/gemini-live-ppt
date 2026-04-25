@@ -2176,3 +2176,62 @@ a:focus-visible {
     padding: 0 16px;
   }
 }
+
+.beforest-bottom-ui.is-cta-mode {
+  bottom: clamp(30px, 5.2vh, 58px);
+  gap: 12px;
+}
+
+.beforest-bottom-ui.is-cta-mode .beforest-subtitle {
+  display: none;
+}
+
+.beforest-bottom-ui.is-cta-mode .beforest-cta-card {
+  order: 1;
+}
+
+.beforest-bottom-ui.is-cta-mode .beforest-action-row {
+  order: 2;
+}
+
+.beforest-cta-card {
+  width: min(100%, 36rem);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.beforest-cta-eyebrow {
+  color: var(--sand);
+}
+
+.beforest-cta-title {
+  margin-top: 8px;
+  font-size: clamp(1.35rem, 3.2vw, 2.15rem);
+  line-height: 1.02;
+}
+
+.beforest-cta-button,
+.beforest-cta-button.secondary {
+  min-height: 3rem;
+  border-radius: 2px;
+  box-shadow: none;
+}
+
+@media (max-width: 768px) {
+  .beforest-bottom-ui.is-cta-mode {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+    gap: 10px;
+  }
+
+  .beforest-cta-card {
+    width: min(100%, 22rem);
+  }
+
+  .beforest-cta-title {
+    font-size: clamp(1.2rem, 5.6vw, 1.55rem);
+  }
+}

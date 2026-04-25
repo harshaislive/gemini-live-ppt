@@ -213,6 +213,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
   const isLiveFocus = isMicOpen || livePhase === "connecting" || livePhase === "answering";
+  const shouldTrackNarrationWords = isPresentationStarted && !isLiveFocus && !shouldShowAccessForm && !promptModal;
 
   useEffect(() => {
     const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY);
@@ -867,6 +868,35 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     ));
   }
 
+  function renderTrackedNarrationSubtitle() {
+    const words = currentChunk.transcript.split(/\s+/).filter(Boolean);
+    const duration = audioRef.current?.duration && Number.isFinite(audioRef.current.duration)
+      ? audioRef.current.duration
+      : currentChunk.durationSeconds;
+    const ratio = Math.max(0, Math.min(1, narratorElapsedSeconds / Math.max(1, duration)));
+    const currentWordIndex = Math.min(words.length - 1, Math.max(0, Math.floor(ratio * words.length)));
+    const start = Math.max(0, currentWordIndex - 2);
+    const end = Math.min(words.length, currentWordIndex + 3);
+    const visibleWords = words.slice(start, end);
+
+    return visibleWords.map((word, index) => {
+      const absoluteIndex = start + index;
+      const distance = Math.abs(absoluteIndex - currentWordIndex);
+      const className = [
+        "beforest-subtitle-word",
+        "is-tracked",
+        distance === 0 ? "is-current" : "",
+        distance === 1 ? "is-near" : "",
+        distance === 2 ? "is-edge" : "",
+      ].filter(Boolean).join(" ");
+      return (
+        <span key={`${currentChunk.id}-${absoluteIndex}-${word}`} className={className}>
+          {word}
+        </span>
+      );
+    });
+  }
+
   return (
     <main className="beforest-shell">
       <div className="beforest-noise" aria-hidden="true" />
@@ -947,10 +977,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                 "beforest-subtitle",
                 displayedSubtitle ? "visible" : "",
                 isLiveFocus ? "is-live" : "",
+                shouldTrackNarrationWords ? "is-tracked" : "",
               ].filter(Boolean).join(" ")}
               aria-live="polite"
+              aria-label={displayedSubtitle}
             >
-              {renderSubtitle(displayedSubtitle)}
+              {shouldTrackNarrationWords ? renderTrackedNarrationSubtitle() : renderSubtitle(displayedSubtitle)}
             </p>
 
             {!shouldShowAccessForm ? (

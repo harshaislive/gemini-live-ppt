@@ -189,12 +189,12 @@ export function getGateAfterChunk(chunkId: NarrationChunkId) {
   return NARRATION_GATES.find((gate) => gate.afterChunkId === chunkId);
 }
 
-export function buildTranscriptWindow(transcript: string, elapsedSeconds: number, durationSeconds: number) {
+export function buildTranscriptWindow(transcript: string, elapsedSeconds: number, durationSeconds: number, leadSeconds = 1.8) {
   const words = transcript.split(/\s+/).filter(Boolean);
   if (!words.length) {
     return "";
   }
-  const ratio = Math.max(0, Math.min(1, elapsedSeconds / Math.max(1, durationSeconds)));
+  const ratio = Math.max(0, Math.min(1, (elapsedSeconds + leadSeconds) / Math.max(1, durationSeconds)));
   const end = Math.max(8, Math.ceil(words.length * ratio));
   const start = Math.max(0, end - 18);
   return words.slice(start, end).join(" ");

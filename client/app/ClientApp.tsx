@@ -9,7 +9,6 @@ import {
   type Session,
 } from "@google/genai";
 import { LoaderCircle, Mic, Pause, Play, Send } from "lucide-react";
-import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { INITIAL_VISUAL } from "./beforest";
 import {
@@ -32,10 +31,6 @@ import {
   mergeRollingWords,
   takeLastWords,
 } from "@/lib/gemini-live-utils";
-
-interface ClientAppProps {
-  isMobile: boolean;
-}
 
 type AccessState = {
   requiresPasscode: boolean;
@@ -83,6 +78,9 @@ const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
+const CONTINUOUS_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-1080.mp4";
+const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
+const SUBTITLE_LEAD_SECONDS = 1.8;
 
 function getMicCapabilityError() {
   if (typeof window === "undefined") {
@@ -137,7 +135,7 @@ function pcmBytesToLiveAudio(bytes: Uint8Array, sampleRate: number) {
   };
 }
 
-export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
+export const ClientApp: React.FC = () => {
   const [accessState, setAccessState] = useState<AccessState | null>(null);
   const [listenerName, setListenerName] = useState("");
   const [hasConfirmedListener, setHasConfirmedListener] = useState(false);
@@ -175,6 +173,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const nextLivePlaybackTimeRef = useRef(0);
   const answerTimeoutRef = useRef<number | null>(null);
   const liveAnswerResumeTimeoutRef = useRef<number | null>(null);
+  const preloadedNarrationAudioRef = useRef<HTMLAudioElement[]>([]);
   const pendingBotTranscriptRef = useRef("");
   const userTranscriptRef = useRef("");
   const shouldResumeNarratorRef = useRef(false);
@@ -258,9 +257,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
   useEffect(() => {
     const sectionVisual = imagesRef.current.find((image) => image.id === currentChunk.visualId);
-    if (sectionVisual) {
-      setVisual(sectionVisual);
-    }
+    setVisual((previous) => sectionVisual ? { ...sectionVisual, videoUrl: previous.videoUrl } : previous);
   }, [currentChunk.visualId]);
 
   useEffect(() => {
@@ -268,14 +265,19 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (!video) {
       return;
     }
-    if (isLiveFocus || promptModal || isNarratorPaused) {
-      video.pause();
-      return;
-    }
     void video.play().catch(() => {
-      // Browser autoplay policies can still block resumed background video.
+      // Muted background video can still be blocked until the first user gesture.
     });
-  }, [isLiveFocus, isNarratorPaused, promptModal, visual.videoUrl]);
+  }, [isPresentationStarted]);
+
+  useEffect(() => {
+    preloadedNarrationAudioRef.current = NARRATION_CHUNKS.map((chunk) => {
+      const audio = new Audio(chunk.audioUrl);
+      audio.preload = "auto";
+      audio.load();
+      return audio;
+    });
+  }, []);
 
   useEffect(() => {
     if (!isPresentationStarted || promptModal) {
@@ -285,10 +287,11 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     if (!audio) {
       return;
     }
+    audio.preload = "auto";
     audio.src = currentChunk.audioUrl;
     audio.currentTime = 0;
     setNarratorElapsedSeconds(0);
-    setNarratorSubtitle(buildTranscriptWindow(currentChunk.transcript, 0, currentChunk.durationSeconds));
+    setNarratorSubtitle(buildTranscriptWindow(currentChunk.transcript, 0, currentChunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
     setIsNarratorPaused(false);
     void audio.play().catch((error) => {
       setIsNarratorPaused(true);
@@ -406,7 +409,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const elapsed = audio.currentTime;
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : currentChunk.durationSeconds;
     setNarratorElapsedSeconds(elapsed);
-    setNarratorSubtitle(buildTranscriptWindow(currentChunk.transcript, elapsed, duration));
+    setNarratorSubtitle(buildTranscriptWindow(currentChunk.transcript, elapsed, duration, SUBTITLE_LEAD_SECONDS));
   }
 
   function handleNarratorEnded() {
@@ -437,6 +440,8 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setIsNarratorPaused(true);
       return;
     }
+    setNarratorElapsedSeconds(0);
+    setNarratorSubtitle(buildTranscriptWindow(nextChunk.transcript, 0, nextChunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
     setCurrentChunkId(nextChunk.id);
   }
 
@@ -968,7 +973,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
     const words = currentChunk.transcript.split(/\s+/).filter(Boolean);
     const wordsPerPhrase = 5;
     const phraseSeconds = 2.7;
-    const phraseIndex = Math.max(0, Math.floor(narratorElapsedSeconds / phraseSeconds));
+    const phraseIndex = Math.max(0, Math.floor((narratorElapsedSeconds + SUBTITLE_LEAD_SECONDS) / phraseSeconds));
     const start = Math.min(
       Math.max(0, words.length - wordsPerPhrase),
       phraseIndex * wordsPerPhrase,
@@ -996,31 +1001,17 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         ].filter(Boolean).join(" ")}
         aria-label="Beforest controlled walkthrough"
       >
-        {visual.videoUrl ? (
-          <video
-            ref={videoRef}
-            key={`${visual.id}-${visual.videoUrl}`}
-            className="beforest-story__image beforest-story__video"
-            poster={visual.imageUrl}
-            autoPlay
-            muted
-            loop
-            playsInline
-          >
-            <source src={visual.videoUrl} type="video/mp4" />
-          </video>
-        ) : (
-          <Image
-            key={visual.id || visual.imageUrl}
-            src={visual.imageUrl}
-            alt={visual.alt}
-            fill
-            priority
-            unoptimized
-            className="beforest-story__image"
-            sizes={isMobile ? "100vw" : "100vw"}
-          />
-        )}
+        <video
+          ref={videoRef}
+          className="beforest-story__image beforest-story__video"
+          poster={CONTINUOUS_BACKGROUND_POSTER_URL}
+          autoPlay
+          muted
+          loop
+          playsInline
+        >
+          <source src={CONTINUOUS_BACKGROUND_VIDEO_URL} type="video/mp4" />
+        </video>
 
         <div className="beforest-story__scrim" aria-hidden="true" />
 
@@ -1036,7 +1027,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         ) : null}
 
         <div className="beforest-story__overlay">
-          <header className="beforest-heading" aria-live="polite">
+          <header key={currentChunk.id} className="beforest-heading" aria-live="polite">
             <p className="beforest-heading__kicker">{guideStage}</p>
             <h1 className="beforest-heading__title">{visual.hook}</h1>
           </header>
@@ -1105,9 +1096,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
                     className="beforest-secondary-action"
                     onClick={toggleNarratorPause}
                     disabled={isLiveBusy || isMicOpen}
+                    aria-label={isNarratorPaused ? "Resume narration" : "Pause narration"}
+                    title={isNarratorPaused ? "Resume narration" : "Pause narration"}
                   >
                     {isNarratorPaused ? <Play size={18} /> : <Pause size={18} />}
-                    {isNarratorPaused ? "Resume" : "Pause"}
                   </button>
                 ) : null}
               </div>

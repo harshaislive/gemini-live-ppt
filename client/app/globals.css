@@ -715,6 +715,7 @@ a:focus-visible {
 
 .beforest-story__video {
   display: block;
+  animation-duration: 24s;
 }
 
 .beforest-story__scrim {
@@ -740,6 +741,7 @@ a:focus-visible {
   left: clamp(18px, 3vw, 28px);
   right: clamp(18px, 10vw, 120px);
   max-width: min(24ch, calc(100vw - 48px));
+  animation: beforestEditorialEnter 720ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .beforest-heading__title {
@@ -1034,6 +1036,26 @@ a:focus-visible {
     box-shadow 180ms ease;
 }
 
+.beforest-mic-button__surface svg,
+.beforest-secondary-action svg {
+  display: block;
+  flex: 0 0 auto;
+  stroke-width: 1.8;
+}
+
+.beforest-mic-button__surface svg {
+  transform: translateY(0.5px);
+}
+
+.beforest-mic-button__surface svg[data-lucide="play"],
+.beforest-secondary-action svg[data-lucide="play"] {
+  transform: translateX(1.5px) translateY(0.5px);
+}
+
+.beforest-secondary-action svg[data-lucide="pause"] {
+  transform: translateY(0.5px);
+}
+
 .beforest-action-label {
   position: relative;
   z-index: 1;
@@ -1225,6 +1247,19 @@ a:focus-visible {
   50% {
     transform: scale(1.08);
     opacity: 0.9;
+  }
+}
+
+@keyframes beforestEditorialEnter {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0);
+    clip-path: inset(0 0 100% 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+    clip-path: inset(0 0 0 0);
   }
 }
 
@@ -2024,6 +2059,14 @@ a:focus-visible {
   gap: 10px;
 }
 
+.beforest-mic-button,
+.beforest-secondary-action {
+  transition:
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .beforest-action-row.is-started .beforest-mic-button {
   width: 56px;
   padding: 0;
@@ -2033,6 +2076,10 @@ a:focus-visible {
   width: 56px;
   padding: 0;
   font-size: 0;
+  display: grid;
+  place-items: center;
+  gap: 0;
+  line-height: 0;
 }
 
 .beforest-action-row.is-start .beforest-mic-button {
@@ -2049,6 +2096,9 @@ a:focus-visible {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  display: grid;
+  place-items: center;
+  line-height: 0;
 }
 
 .beforest-mic-button.is-open,

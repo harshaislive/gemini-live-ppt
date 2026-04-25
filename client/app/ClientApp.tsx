@@ -127,6 +127,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   const [uiError, setUiError] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const liveConnectPromiseRef = useRef<Promise<Session> | null>(null);
   const liveSocketOpenRef = useRef(false);
@@ -209,6 +210,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
   ]);
 
   const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
+  const isLiveFocus = isMicOpen || livePhase === "connecting" || livePhase === "answering";
 
   useEffect(() => {
     const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY);
@@ -239,6 +241,20 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setVisual(sectionVisual);
     }
   }, [currentChunk.visualId]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    if (isLiveFocus || promptModal) {
+      video.pause();
+      return;
+    }
+    void video.play().catch(() => {
+      // Browser autoplay policies can still block resumed background video.
+    });
+  }, [isLiveFocus, promptModal, visual.videoUrl]);
 
   useEffect(() => {
     if (!isPresentationStarted || promptModal) {
@@ -826,6 +842,22 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       : "The narrator keeps control. Use the mic only when you want to interrupt."
     : "The presentation starts from committed audio, so there is no live wait at the beginning.";
 
+  function renderSubtitle(text: string) {
+    const words = text.split(/(\s+)/);
+    const wordIndexes = words
+      .map((part, index) => (part.trim() ? index : -1))
+      .filter((index) => index >= 0);
+    const highlightStart = wordIndexes[Math.max(0, wordIndexes.length - 5)] ?? Number.POSITIVE_INFINITY;
+    return words.map((part, index) => (
+      <span
+        key={`${part}-${index}`}
+        className={index >= highlightStart && part.trim() ? "beforest-subtitle-word is-current" : "beforest-subtitle-word"}
+      >
+        {part}
+      </span>
+    ));
+  }
+
   return (
     <main className="beforest-shell">
       <div className="beforest-noise" aria-hidden="true" />
@@ -836,9 +868,18 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
         onEnded={handleNarratorEnded}
       />
 
-      <section className="beforest-story" aria-label="Beforest controlled walkthrough">
+      <section
+        className={[
+          "beforest-story",
+          isLiveFocus ? "is-live-focus" : "",
+          isMicOpen ? "is-listening" : "",
+          livePhase === "answering" ? "is-answering" : "",
+        ].filter(Boolean).join(" ")}
+        aria-label="Beforest controlled walkthrough"
+      >
         {visual.videoUrl ? (
           <video
+            ref={videoRef}
             key={`${visual.id}-${visual.videoUrl}`}
             className="beforest-story__image beforest-story__video"
             poster={visual.imageUrl}
@@ -864,6 +905,17 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
 
         <div className="beforest-story__scrim" aria-hidden="true" />
 
+        {isLiveFocus ? (
+          <div className="beforest-live-focus" aria-hidden="true">
+            <div className="beforest-live-focus__mark">
+              <span />
+              <span />
+              <span />
+            </div>
+            <p>{livePhase === "answering" ? "Answer forming" : isMicOpen ? "Listening" : "Opening live mic"}</p>
+          </div>
+        ) : null}
+
         <div className="beforest-story__overlay">
           <header className="beforest-heading" aria-live="polite">
             <p className="beforest-heading__kicker">{guideStage}</p>
@@ -881,8 +933,15 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
               </p>
             ) : null}
 
-            <p className={`beforest-subtitle${displayedSubtitle ? " visible" : ""}`} aria-live="polite">
-              {displayedSubtitle}
+            <p
+              className={[
+                "beforest-subtitle",
+                displayedSubtitle ? "visible" : "",
+                isLiveFocus ? "is-live" : "",
+              ].filter(Boolean).join(" ")}
+              aria-live="polite"
+            >
+              {renderSubtitle(displayedSubtitle)}
             </p>
 
             {!shouldShowAccessForm ? (

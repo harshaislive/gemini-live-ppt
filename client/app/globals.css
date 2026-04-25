@@ -1,19 +1,24 @@
 @import "tailwindcss";
 
 :root {
-  --background: #17120e;
-  --background-elevated: rgba(33, 25, 19, 0.86);
-  --background-panel: rgba(24, 18, 14, 0.78);
-  --foreground: #f3ecde;
-  --foreground-soft: rgba(243, 236, 222, 0.78);
-  --foreground-faint: rgba(243, 236, 222, 0.54);
-  --line: rgba(216, 203, 179, 0.16);
-  --line-strong: rgba(216, 203, 179, 0.3);
-  --sand: #d5b18a;
-  --sage: #b9c7a6;
-  --clay: #965f44;
-  --shadow-deep: 0 30px 80px rgba(0, 0, 0, 0.34);
-  --shadow-panel: 0 18px 40px rgba(0, 0, 0, 0.22);
+  --background: #342e29;
+  --background-elevated: #4b3c35;
+  --background-panel: #342e29;
+  --foreground: #fdfbf7;
+  --foreground-soft: rgba(253, 251, 247, 0.78);
+  --foreground-faint: rgba(253, 251, 247, 0.54);
+  --line: rgba(231, 228, 223, 0.2);
+  --line-strong: rgba(255, 192, 131, 0.42);
+  --sand: #ffc083;
+  --sage: #b8dc99;
+  --forest: #344736;
+  --forest-soft: #415c43;
+  --rich-red: #86312b;
+  --clay: #9e3430;
+  --soft-gray: #e7e4df;
+  --off-white: #fdfbf7;
+  --shadow-deep: 0 30px 80px rgba(20, 16, 13, 0.36);
+  --shadow-panel: 0 18px 40px rgba(20, 16, 13, 0.24);
 }
 
 * {
@@ -28,9 +33,7 @@ body {
   margin: 0;
   min-height: 100dvh;
   background:
-    radial-gradient(circle at top left, rgba(126, 141, 105, 0.2), transparent 28%),
-    radial-gradient(circle at top right, rgba(213, 177, 138, 0.12), transparent 24%),
-    linear-gradient(180deg, #120d0a 0%, #17120e 34%, #1d1611 100%);
+    linear-gradient(180deg, #342e29 0%, #2f2a25 42%, #344736 100%);
   color: var(--foreground);
   font-family: var(--font-arizona-sans), ui-sans-serif, system-ui, sans-serif;
   text-rendering: optimizeLegibility;
@@ -681,6 +684,409 @@ a:focus-visible {
   .beforest-subtitle {
     animation: none !important;
     transition: none !important;
+  }
+}
+
+/* Brand-directed controlled presentation surface */
+.beforest-story {
+  background: var(--background);
+}
+
+.beforest-story__image {
+  filter: saturate(0.86) contrast(1.02) brightness(0.82);
+  transition:
+    filter 900ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 1200ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 900ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.beforest-story.is-live-focus .beforest-story__image {
+  transform: scale(1.02);
+  filter: saturate(0.52) contrast(0.98) brightness(0.46);
+  opacity: 0.58;
+  animation-play-state: paused;
+}
+
+.beforest-story__scrim {
+  background:
+    linear-gradient(180deg, rgba(52, 46, 41, 0.28) 0%, rgba(52, 46, 41, 0.08) 24%, rgba(52, 46, 41, 0.3) 58%, rgba(52, 46, 41, 0.92) 100%),
+    linear-gradient(90deg, rgba(52, 71, 54, 0.48), transparent 54%),
+    radial-gradient(circle at center, transparent 54%, rgba(52, 46, 41, 0.28) 100%);
+}
+
+.beforest-story.is-live-focus .beforest-story__scrim {
+  background:
+    linear-gradient(180deg, rgba(52, 46, 41, 0.62) 0%, rgba(52, 46, 41, 0.34) 45%, rgba(52, 46, 41, 0.94) 100%),
+    radial-gradient(circle at 50% 46%, rgba(184, 220, 153, 0.13), transparent 22%),
+    linear-gradient(90deg, rgba(52, 71, 54, 0.76), rgba(52, 46, 41, 0.24));
+}
+
+.beforest-heading {
+  max-width: min(28ch, calc(100vw - 48px));
+}
+
+.beforest-heading__kicker,
+.beforest-status,
+.beforest-action-label,
+.beforest-access-button,
+.beforest-cta-eyebrow,
+.beforest-cta-button,
+.beforest-question-eyebrow {
+  font-family: var(--font-arizona-flare), Georgia, serif;
+  letter-spacing: 0.14em;
+}
+
+.beforest-heading__kicker {
+  color: var(--sand);
+}
+
+.beforest-heading__title {
+  color: var(--off-white);
+  letter-spacing: -0.018em;
+  text-shadow: 0 12px 34px rgba(20, 16, 13, 0.42);
+}
+
+.beforest-status {
+  position: relative;
+  padding: 9px 14px 8px 28px;
+  border: 1px solid rgba(231, 228, 223, 0.22);
+  border-radius: 0;
+  background: rgba(52, 46, 41, 0.84);
+  color: var(--soft-gray);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.beforest-status::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--sand);
+}
+
+.beforest-status--live_ready::before {
+  background: var(--sage);
+}
+
+.beforest-status--listening::before,
+.beforest-status--answering::before,
+.beforest-status--connecting::before {
+  background: var(--sand);
+  animation: beforestBreath 1.7s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.beforest-status--unavailable::before,
+.beforest-status--live_unavailable::before {
+  background: var(--clay);
+}
+
+.beforest-subtitle {
+  width: min(100%, 42rem);
+  padding: 0;
+  color: rgba(253, 251, 247, 0.62);
+  font-family: var(--font-arizona-flare), Georgia, serif;
+  font-size: clamp(1.18rem, 2.6vw, 1.7rem);
+  line-height: 1.28;
+  letter-spacing: -0.012em;
+  text-align: left;
+  text-shadow: 0 14px 34px rgba(20, 16, 13, 0.46);
+  transition:
+    opacity 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 520ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 520ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.beforest-subtitle.is-live {
+  width: min(100%, 38rem);
+  text-align: center;
+  color: rgba(253, 251, 247, 0.78);
+}
+
+.beforest-subtitle-word {
+  color: inherit;
+  transition:
+    color 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 620ms cubic-bezier(0.16, 1, 0.3, 1),
+    text-shadow 620ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.beforest-subtitle-word.is-current {
+  color: var(--off-white);
+  text-shadow:
+    0 0 1px rgba(253, 251, 247, 0.34),
+    0 12px 30px rgba(20, 16, 13, 0.48);
+}
+
+.beforest-mic-hint {
+  max-width: 28rem;
+  color: rgba(231, 228, 223, 0.68);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.beforest-action-row {
+  align-items: center;
+  gap: 12px;
+}
+
+.beforest-mic-button,
+.beforest-secondary-action,
+.beforest-access-input,
+.beforest-access-button,
+.beforest-cta-button,
+.beforest-question-options button,
+.beforest-question-skip {
+  border-radius: 0;
+}
+
+.beforest-mic-button {
+  min-width: 16rem;
+  height: 64px;
+  border-color: rgba(231, 228, 223, 0.24);
+  background: var(--off-white);
+  color: var(--background);
+  box-shadow: 0 22px 42px rgba(20, 16, 13, 0.22);
+  backdrop-filter: none;
+  transition:
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.beforest-mic-button__ring {
+  inset: -7px;
+  border-color: rgba(253, 251, 247, 0.24);
+  border-radius: 0;
+  opacity: 0;
+}
+
+.beforest-mic-button__surface {
+  width: 48px;
+  height: 48px;
+  border-color: rgba(52, 46, 41, 0.18);
+  border-radius: 0;
+  background: #e7e4df;
+  color: #342e29;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.beforest-action-label {
+  color: inherit;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+.beforest-mic-button:not(:disabled):hover {
+  transform: translateY(-2px);
+  background: var(--sand);
+}
+
+.beforest-mic-button.is-open,
+.beforest-mic-button.is-speaking {
+  background: var(--forest);
+  color: var(--off-white);
+  border-color: rgba(184, 220, 153, 0.34);
+  transform: translateY(0) scale(0.985);
+}
+
+.beforest-mic-button.is-open .beforest-mic-button__surface,
+.beforest-mic-button.is-speaking .beforest-mic-button__surface {
+  border-color: rgba(184, 220, 153, 0.26);
+  background: var(--forest-soft);
+  color: var(--off-white);
+}
+
+.beforest-mic-button.is-speaking .beforest-mic-button__ring,
+.beforest-mic-button.is-open .beforest-mic-button__ring {
+  opacity: 1;
+  animation: beforestSquarePulse 1.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.beforest-secondary-action {
+  min-height: 64px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-color: rgba(231, 228, 223, 0.24);
+  background: rgba(52, 46, 41, 0.9);
+  color: var(--off-white);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.beforest-live-focus {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  opacity: 0;
+  animation: beforestFocusEnter 680ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.beforest-live-focus__mark {
+  position: relative;
+  width: min(42vw, 17rem);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(184, 220, 153, 0.24);
+}
+
+.beforest-live-focus__mark::before,
+.beforest-live-focus__mark::after,
+.beforest-live-focus__mark span {
+  content: "";
+  position: absolute;
+  border: 1px solid rgba(184, 220, 153, 0.2);
+  inset: 16%;
+  animation: beforestFocusPulse 2.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+}
+
+.beforest-live-focus__mark::after {
+  inset: 30%;
+  animation-delay: 240ms;
+}
+
+.beforest-live-focus__mark span:nth-child(1) {
+  inset: 44%;
+  background: var(--sage);
+  border: 0;
+  animation: beforestCorePulse 1.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.beforest-live-focus__mark span:nth-child(2),
+.beforest-live-focus__mark span:nth-child(3) {
+  display: none;
+}
+
+.beforest-live-focus p {
+  position: absolute;
+  top: calc(50% + min(24vw, 9.8rem));
+  margin: 22px 0 0;
+  color: rgba(253, 251, 247, 0.72);
+  font-family: var(--font-arizona-flare), Georgia, serif;
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.beforest-access-card,
+.beforest-cta-card,
+.beforest-question-modal {
+  border-radius: 0;
+  border-color: rgba(231, 228, 223, 0.24);
+  background: rgba(52, 46, 41, 0.94);
+  box-shadow: 0 26px 58px rgba(20, 16, 13, 0.32);
+  backdrop-filter: none;
+}
+
+.beforest-access-input {
+  border-color: rgba(231, 228, 223, 0.24);
+  background: var(--off-white);
+  color: var(--background);
+  box-shadow: none;
+}
+
+.beforest-access-input::placeholder {
+  color: rgba(52, 46, 41, 0.54);
+}
+
+.beforest-access-button,
+.beforest-cta-button {
+  border-color: transparent;
+  background: var(--sand);
+  color: var(--background);
+  box-shadow: none;
+  text-transform: uppercase;
+}
+
+.beforest-cta-button.secondary {
+  border-color: rgba(231, 228, 223, 0.26);
+  background: transparent;
+  color: var(--off-white);
+}
+
+.beforest-question-backdrop {
+  background: rgba(52, 46, 41, 0.76);
+  backdrop-filter: none;
+}
+
+.beforest-question-options button {
+  border-color: rgba(231, 228, 223, 0.22);
+  background: rgba(253, 251, 247, 0.07);
+}
+
+.beforest-question-options button:hover {
+  background: var(--off-white);
+  color: var(--background);
+}
+
+@keyframes beforestBreath {
+  0%,
+  100% {
+    transform: translateY(-50%) scale(0.86);
+    opacity: 0.62;
+  }
+  50% {
+    transform: translateY(-50%) scale(1.2);
+    opacity: 1;
+  }
+}
+
+@keyframes beforestSquarePulse {
+  0%,
+  100% {
+    transform: scale(0.98);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.86;
+  }
+}
+
+@keyframes beforestFocusEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes beforestFocusPulse {
+  0%,
+  100% {
+    transform: scale(0.96);
+    opacity: 0.22;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.62;
+  }
+}
+
+@keyframes beforestCorePulse {
+  0%,
+  100% {
+    transform: scale(0.74);
+    opacity: 0.56;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 

@@ -1624,13 +1624,13 @@ a:focus-visible {
 
   .beforest-bottom-ui {
     width: calc(100vw - 28px);
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-    gap: 10px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 14px);
+    gap: 8px;
   }
 
   .beforest-subtitle {
-    width: min(100%, 31rem);
-    font-size: clamp(1.02rem, 5vw, 1.28rem);
+    width: min(100%, 28rem);
+    font-size: clamp(0.96rem, 4.6vw, 1.18rem);
     line-height: 1.28;
   }
 
@@ -1640,6 +1640,12 @@ a:focus-visible {
   }
 
   .beforest-action-row {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+  }
+
+  .beforest-action-row.is-started {
     width: auto;
     display: inline-grid;
     grid-auto-flow: column;
@@ -1653,8 +1659,8 @@ a:focus-visible {
     backdrop-filter: blur(10px);
   }
 
-  .beforest-mic-button,
-  .beforest-secondary-action {
+  .beforest-action-row.is-started .beforest-mic-button,
+  .beforest-action-row.is-started .beforest-secondary-action {
     width: 58px;
     min-width: 0;
     height: 58px;
@@ -1663,15 +1669,16 @@ a:focus-visible {
     justify-content: center;
   }
 
-  .beforest-mic-button {
-    gap: 0;
-  }
-
-  .beforest-mic-button:not(.is-live) {
-    width: auto;
-    min-width: 13.5rem;
+  .beforest-action-row.is-start .beforest-mic-button {
+    width: min(100%, 15rem);
+    min-width: 0;
+    height: 58px;
     gap: 10px;
     padding: 0 18px 0 8px;
+  }
+
+  .beforest-action-row.is-started .beforest-mic-button {
+    gap: 0;
   }
 
   .beforest-mic-button__surface {
@@ -1679,7 +1686,7 @@ a:focus-visible {
     height: 46px;
   }
 
-  .beforest-mic-button.is-live .beforest-action-label {
+  .beforest-action-row.is-started .beforest-action-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1691,11 +1698,11 @@ a:focus-visible {
     border: 0;
   }
 
-  .beforest-secondary-action {
+  .beforest-action-row.is-started .beforest-secondary-action {
     font-size: 0;
   }
 
-  .beforest-secondary-action svg {
+  .beforest-action-row.is-started .beforest-secondary-action svg {
     width: 20px;
     height: 20px;
   }

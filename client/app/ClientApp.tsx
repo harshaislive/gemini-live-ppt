@@ -986,7 +986,10 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
             </p>
 
             {!shouldShowAccessForm ? (
-              <div className="beforest-action-row">
+              <div className={[
+                "beforest-action-row",
+                isPresentationStarted ? "is-started" : "is-start",
+              ].join(" ")}>
                 <button
                   type="button"
                   className={[

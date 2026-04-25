@@ -96,6 +96,30 @@ function getMicCapabilityError() {
   return null;
 }
 
+function getMicrophoneRuntimeError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return "Microphone could not be opened in this browser session.";
+  }
+
+  const name = "name" in error ? String(error.name) : "";
+  const message = error.message || "";
+
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "Microphone permission is blocked. Allow mic access in the browser, then tap again.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "No microphone was found. Connect a mic or switch to a browser with mic access.";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "The microphone is already in use by another app. Close that app, then try again.";
+  }
+  if (name === "NotSupportedError" || /not supported/i.test(message)) {
+    return "This browser session cannot provide a microphone. Try Chrome on the live HTTPS link.";
+  }
+
+  return message || "Microphone could not be opened in this browser session.";
+}
+
 function float32ToPcm16(input: Float32Array) {
   const pcm = new Int16Array(input.length);
   for (let index = 0; index < input.length; index += 1) {
@@ -818,7 +842,7 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       setLivePhase("listening");
     } catch (error) {
       setLivePhase("unavailable");
-      setUiError(error instanceof Error ? error.message : "Microphone access failed.");
+      setUiError(getMicrophoneRuntimeError(error));
       stopRecorder();
       clearAnswerTimeout();
       void sessionRef.current?.close?.();

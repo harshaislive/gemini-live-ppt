@@ -1015,17 +1015,6 @@ export const ClientApp: React.FC = () => {
 
         <div className="beforest-story__scrim" aria-hidden="true" />
 
-        {isLiveFocus ? (
-          <div className="beforest-live-focus" aria-hidden="true">
-            <div className="beforest-live-focus__mark">
-              <span />
-              <span />
-              <span />
-            </div>
-            <p>{livePhase === "answering" ? "Answer forming" : isMicOpen ? "Listening" : "Opening live mic"}</p>
-          </div>
-        ) : null}
-
         <div className="beforest-story__overlay">
           <header key={currentChunk.id} className="beforest-heading" aria-live="polite">
             <p className="beforest-heading__kicker">{guideStage}</p>
@@ -1034,7 +1023,7 @@ export const ClientApp: React.FC = () => {
 
           <div className={[
             "beforest-bottom-ui",
-            showDecisionCta ? "is-cta-mode" : "",
+            shouldShowDecisionCta ? "is-cta-mode" : "",
             isLiveFocus ? "is-live-mode" : "",
           ].filter(Boolean).join(" ")}>
             {uiError ? (

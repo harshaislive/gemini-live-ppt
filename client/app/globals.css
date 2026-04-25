@@ -1545,107 +1545,10 @@ a:focus-visible {
   background: rgba(52, 46, 41, 0.58);
 }
 
-.beforest-live-focus {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-
-.beforest-live-focus__mark {
-  position: relative;
-  width: min(44vw, 13rem);
-  height: min(44vw, 13rem);
-  display: grid;
-  place-items: center;
-}
-
-.beforest-live-focus__mark::before,
-.beforest-live-focus__mark::after {
-  content: "";
-  position: absolute;
-  border-radius: 999px;
-  border: 1px solid rgba(184, 220, 153, 0.24);
-  inset: 14%;
-  animation: beforestSoftRipple 2.8s cubic-bezier(0.16, 1, 0.3, 1) infinite;
-}
-
-.beforest-live-focus__mark::after {
-  inset: 28%;
-  animation-delay: 360ms;
-}
-
-.beforest-live-focus__mark span {
-  position: absolute;
-  display: block;
-  border-radius: 999px;
-}
-
-.beforest-live-focus__mark span:nth-child(1) {
-  width: 16px;
-  height: 16px;
-  background: var(--sage);
-  box-shadow: 0 0 0 10px rgba(184, 220, 153, 0.08);
-  animation: beforestBreathingDot 1.8s ease-in-out infinite;
-}
-
-.beforest-live-focus__mark span:nth-child(2),
-.beforest-live-focus__mark span:nth-child(3) {
-  width: 1px;
-  height: 48%;
-  background: rgba(253, 251, 247, 0.18);
-  transform-origin: 50% 100%;
-}
-
-.beforest-live-focus__mark span:nth-child(2) {
-  transform: rotate(28deg) translateY(-10%);
-}
-
-.beforest-live-focus__mark span:nth-child(3) {
-  transform: rotate(-24deg) translateY(-12%);
-}
-
-.beforest-live-focus p {
-  position: absolute;
-  top: calc(50% + min(24vw, 7.8rem));
-  margin: 18px 0 0;
-  color: rgba(253, 251, 247, 0.72);
-  font-family: var(--font-arizona-flare), Georgia, serif;
-  font-size: 0.76rem;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .beforest-access-card,
 .beforest-cta-card,
 .beforest-question-modal {
   background: rgba(52, 46, 41, 0.84);
-}
-
-@keyframes beforestSoftRipple {
-  0%,
-  100% {
-    transform: scale(0.92);
-    opacity: 0.18;
-  }
-  50% {
-    transform: scale(1.08);
-    opacity: 0.54;
-  }
-}
-
-@keyframes beforestBreathingDot {
-  0%,
-  100% {
-    transform: scale(0.82);
-    opacity: 0.68;
-  }
-  50% {
-    transform: scale(1.08);
-    opacity: 1;
-  }
 }
 
 @media (max-width: 768px) {
@@ -1746,11 +1649,6 @@ a:focus-visible {
 
   .beforest-mic-hint {
     display: none;
-  }
-
-  .beforest-live-focus__mark {
-    width: min(56vw, 12rem);
-    height: min(56vw, 12rem);
   }
 }
 
@@ -1859,36 +1757,6 @@ a:focus-visible {
 .beforest-mic-button.is-open .beforest-mic-button__surface,
 .beforest-mic-button.is-speaking .beforest-mic-button__surface {
   background: rgba(184, 220, 153, 0.12);
-}
-
-.beforest-live-focus__mark {
-  width: min(46vw, 13rem);
-  height: min(46vw, 13rem);
-  border: 1px solid rgba(231, 228, 223, 0.18);
-  border-radius: 18px;
-  background: rgba(52, 46, 41, 0.24);
-  box-shadow:
-    inset 0 18px 0 rgba(253, 251, 247, 0.03),
-    inset 0 -18px 0 rgba(20, 16, 13, 0.08);
-}
-
-.beforest-live-focus__mark::before,
-.beforest-live-focus__mark::after {
-  display: none;
-}
-
-.beforest-live-focus__mark span:nth-child(1) {
-  width: 36px;
-  height: 36px;
-  border: 1px solid rgba(184, 220, 153, 0.42);
-  border-radius: 12px;
-  background: rgba(184, 220, 153, 0.18);
-  box-shadow: none;
-}
-
-.beforest-live-focus__mark span:nth-child(2),
-.beforest-live-focus__mark span:nth-child(3) {
-  display: none;
 }
 
 @media (max-width: 768px) {
@@ -2153,28 +2021,6 @@ a:focus-visible {
   background: var(--sand);
 }
 
-.beforest-live-focus__mark {
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.beforest-live-focus__mark span:nth-child(1) {
-  width: 14px;
-  height: 14px;
-  border: 1px solid rgba(184, 220, 153, 0.78);
-  border-radius: 50%;
-  background: rgba(184, 220, 153, 0.24);
-}
-
-.beforest-live-focus p {
-  top: calc(50% + 28px);
-  font-size: 0.68rem;
-}
-
 @media (max-width: 768px) {
   .beforest-story__overlay {
     padding: 18px;
@@ -2234,6 +2080,31 @@ a:focus-visible {
 
 .beforest-bottom-ui.is-cta-mode .beforest-subtitle {
   display: none;
+}
+
+.beforest-bottom-ui.is-live-mode .beforest-subtitle {
+  display: block;
+}
+
+.beforest-bottom-ui.is-live-mode {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + clamp(22px, 5vh, 54px));
+  gap: 10px;
+}
+
+.beforest-bottom-ui.is-live-mode .beforest-action-row {
+  order: 2;
+}
+
+.beforest-bottom-ui.is-cta-mode .beforest-inline-error {
+  width: min(100%, 22rem);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--sand);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-shadow: 0 5px 18px rgba(20, 16, 13, 0.5);
 }
 
 .beforest-bottom-ui.is-cta-mode .beforest-cta-card {

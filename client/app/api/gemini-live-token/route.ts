@@ -1,4 +1,10 @@
-import { GoogleGenAI, Modality, type CreateAuthTokenConfig } from "@google/genai/node";
+import {
+  ActivityHandling,
+  GoogleGenAI,
+  Modality,
+  TurnCoverage,
+  type CreateAuthTokenConfig,
+} from "@google/genai/node";
 import { NextRequest, NextResponse } from "next/server";
 import { buildSystemInstruction } from "@/lib/beforest-runtime";
 import { getServerEnv } from "@/lib/server-env";
@@ -56,6 +62,13 @@ export async function POST(req: NextRequest) {
           systemInstruction,
           outputAudioTranscription: {},
           inputAudioTranscription: {},
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: true,
+            },
+            activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+            turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
+          },
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {

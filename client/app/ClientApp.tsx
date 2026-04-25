@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  ActivityHandling,
   GoogleGenAI,
   Modality,
+  TurnCoverage,
   type LiveServerMessage,
   type Session,
 } from "@google/genai";
@@ -60,8 +62,9 @@ type RecorderState = {
   stream: MediaStream;
   context: AudioContext;
   source: MediaStreamAudioSourceNode;
-  processor: ScriptProcessorNode;
   gain: GainNode;
+  worklet?: AudioWorkletNode;
+  processor?: ScriptProcessorNode;
   hasSpeech: boolean;
 };
 
@@ -78,6 +81,7 @@ const DEFAULT_VOICE_ID = "Gacrux";
 const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence";
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
+const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 
 function getMicCapabilityError() {
   if (typeof window === "undefined") {
@@ -99,6 +103,13 @@ function float32ToPcm16(input: Float32Array) {
     pcm[index] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
   }
   return pcm;
+}
+
+function pcmBytesToLiveAudio(bytes: Uint8Array, sampleRate: number) {
+  return {
+    data: bytesToBase64(bytes),
+    mimeType: `audio/pcm;rate=${sampleRate}`,
+  };
 }
 
 export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
@@ -685,6 +696,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
+          realtimeInputConfig: {
+            automaticActivityDetection: {
+              disabled: true,
+            },
+            activityHandling: ActivityHandling.START_OF_ACTIVITY_INTERRUPTS,
+            turnCoverage: TurnCoverage.TURN_INCLUDES_ONLY_ACTIVITY,
+          },
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
@@ -725,48 +743,77 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       const session = await ensureLiveSession();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const context = new AudioContext({ sampleRate: 16000 });
+      if (context.state === "suspended") {
+        await context.resume();
+      }
       const source = context.createMediaStreamSource(stream);
-      const processor = context.createScriptProcessor(4096, 1, 1);
       const gain = context.createGain();
       gain.gain.value = 0;
-      recorderRef.current = { stream, context, source, processor, gain, hasSpeech: false };
-
-      processor.onaudioprocess = (event) => {
-        const recorder = recorderRef.current;
-        if (!recorder) {
-          return;
-        }
-        const input = new Float32Array(event.inputBuffer.getChannelData(0));
-        let energy = 0;
-        for (const sample of input) {
-          energy += sample * sample;
-        }
-        const isSpeaking = Math.sqrt(energy / input.length) > 0.015;
-        recorder.hasSpeech = recorder.hasSpeech || isSpeaking;
-        setIsUserSpeaking(isSpeaking);
-        if (!liveSocketOpenRef.current || sessionRef.current !== session) {
-          return;
-        }
-        const pcm16 = float32ToPcm16(input);
-        try {
-          session.sendRealtimeInput({
-            audio: {
-              data: bytesToBase64(new Uint8Array(pcm16.buffer)),
-              mimeType: `audio/pcm;rate=${context.sampleRate}`,
-            },
-          });
-        } catch {
-          stopRecorder();
-          setLivePhase("unavailable");
-        }
-      };
-
-      source.connect(processor);
-      processor.connect(gain);
+      recorderRef.current = { stream, context, source, gain, hasSpeech: false };
       gain.connect(context.destination);
       if (liveSocketOpenRef.current) {
         session.sendRealtimeInput({ activityStart: {} });
       }
+
+      if (context.audioWorklet) {
+        await context.audioWorklet.addModule(MIC_WORKLET_URL);
+        const worklet = new AudioWorkletNode(context, "mic-pcm-processor");
+        worklet.port.onmessage = (event: MessageEvent<{ pcm?: ArrayBuffer; energy?: number }>) => {
+          const recorder = recorderRef.current;
+          if (!recorder || !event.data.pcm) {
+            return;
+          }
+          const isSpeaking = (event.data.energy || 0) > 0.015;
+          recorder.hasSpeech = recorder.hasSpeech || isSpeaking;
+          setIsUserSpeaking(isSpeaking);
+          if (!liveSocketOpenRef.current || sessionRef.current !== session) {
+            return;
+          }
+          try {
+            session.sendRealtimeInput({
+              audio: pcmBytesToLiveAudio(new Uint8Array(event.data.pcm), context.sampleRate),
+            });
+          } catch {
+            stopRecorder();
+            setLivePhase("unavailable");
+          }
+        };
+        recorderRef.current.worklet = worklet;
+        source.connect(worklet);
+        worklet.connect(gain);
+      } else {
+        const processor = context.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (event) => {
+          const recorder = recorderRef.current;
+          if (!recorder) {
+            return;
+          }
+          const input = new Float32Array(event.inputBuffer.getChannelData(0));
+          let energy = 0;
+          for (const sample of input) {
+            energy += sample * sample;
+          }
+          const isSpeaking = Math.sqrt(energy / input.length) > 0.015;
+          recorder.hasSpeech = recorder.hasSpeech || isSpeaking;
+          setIsUserSpeaking(isSpeaking);
+          if (!liveSocketOpenRef.current || sessionRef.current !== session) {
+            return;
+          }
+          const pcm16 = float32ToPcm16(input);
+          try {
+            session.sendRealtimeInput({
+              audio: pcmBytesToLiveAudio(new Uint8Array(pcm16.buffer), context.sampleRate),
+            });
+          } catch {
+            stopRecorder();
+            setLivePhase("unavailable");
+          }
+        };
+        recorderRef.current.processor = processor;
+        source.connect(processor);
+        processor.connect(gain);
+      }
+
       setIsMicOpen(true);
       setLivePhase("listening");
     } catch (error) {
@@ -792,7 +839,9 @@ export const ClientApp: React.FC<ClientAppProps> = ({ isMobile }) => {
       return;
     }
     try {
-      recorder.processor.disconnect();
+      recorder.worklet?.disconnect();
+      recorder.worklet?.port.close();
+      recorder.processor?.disconnect();
       recorder.source.disconnect();
       recorder.gain.disconnect();
     } catch {

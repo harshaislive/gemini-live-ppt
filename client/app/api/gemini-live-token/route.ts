@@ -1,21 +1,23 @@
 import { GoogleGenAI, Modality, type CreateAuthTokenConfig } from "@google/genai/node";
 import { NextRequest, NextResponse } from "next/server";
 import { buildSystemInstruction } from "@/lib/beforest-runtime";
+import { getServerEnv } from "@/lib/server-env";
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-const GOOGLE_VOICE_ID = process.env.GOOGLE_VOICE_ID || "Gacrux";
 const ACCESS_COOKIE = "beforest_presentation_access";
-const PASSCODE = process.env.PRESENTATION_PASSCODE?.trim() || "";
 
 export const revalidate = 0;
 
 export async function POST(req: NextRequest) {
   try {
-    if (PASSCODE && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
+    const passcode = getServerEnv("PRESENTATION_PASSCODE")?.trim() || "";
+    const googleApiKey = getServerEnv("GOOGLE_API_KEY");
+    const googleVoiceId = getServerEnv("GOOGLE_VOICE_ID") || "Gacrux";
+
+    if (passcode && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
       return new NextResponse("Presentation access is locked.", { status: 401 });
     }
 
-    if (!GOOGLE_API_KEY) {
+    if (!googleApiKey) {
       throw new Error("GOOGLE_API_KEY is not defined");
     }
 
@@ -24,7 +26,7 @@ export async function POST(req: NextRequest) {
     const firstName = listenerName.split(/\s+/)[0] || "";
 
     const ai = new GoogleGenAI({
-      apiKey: GOOGLE_API_KEY,
+      apiKey: googleApiKey,
       apiVersion: "v1alpha",
     });
 
@@ -41,7 +43,7 @@ export async function POST(req: NextRequest) {
       newSessionExpireTime,
       expireTime,
       liveConnectConstraints: {
-        model: process.env.GEMINI_LIVE_MODEL || "gemini-2.5-flash-native-audio-preview-12-2025",
+        model: getServerEnv("GEMINI_LIVE_MODEL") || "gemini-2.5-flash-native-audio-preview-12-2025",
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction,
@@ -50,7 +52,7 @@ export async function POST(req: NextRequest) {
           speechConfig: {
             voiceConfig: {
               prebuiltVoiceConfig: {
-                voiceName: GOOGLE_VOICE_ID,
+                voiceName: googleVoiceId,
               },
             },
           },

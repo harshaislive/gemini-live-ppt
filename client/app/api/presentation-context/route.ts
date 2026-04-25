@@ -5,14 +5,15 @@ import {
   loadCuratedImages,
   loadKnowledgeChunks,
 } from "@/lib/beforest-runtime";
+import { getServerEnv } from "@/lib/server-env";
 
 const ACCESS_COOKIE = "beforest_presentation_access";
-const PASSCODE = process.env.PRESENTATION_PASSCODE?.trim() || "";
 
 export const revalidate = 0;
 
 export async function GET(req: NextRequest) {
-  if (PASSCODE && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
+  const passcode = getServerEnv("PRESENTATION_PASSCODE")?.trim() || "";
+  if (passcode && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
     return new NextResponse("Presentation access is locked.", { status: 401 });
   }
 

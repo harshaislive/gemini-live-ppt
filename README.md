@@ -1,6 +1,6 @@
-# Beforest Direct Gemini Live
+# Beforest Controlled Narrator + Gemini Live
 
-A Beforest editorial presentation experience rebuilt around direct Gemini Live, with passcode-gated access, curated visuals, and approved Beforest knowledge.
+A Beforest editorial presentation experience built around committed narration audio, passcode-gated access, curated visuals, and a Gemini Live interruption mic.
 
 ## What this repo now contains
 - `client/` — Next.js editorial UI and direct Gemini Live session handling
@@ -13,10 +13,10 @@ A Beforest editorial presentation experience rebuilt around direct Gemini Live, 
 - Beforest visual shell with ABC Arizona fonts
 - Full-bleed image stage and live subtitle banner
 - Mic toggle + trial-stay CTA
-- Auto-start Gemini Live opening turn
-- `retrieve_beforest_knowledge` tool
-- `show_curated_image` tool
-- Browser-side tool execution against approved Beforest content
+- Instant static narrator start from committed WAV chunks
+- Gemini Live only for tap-to-talk interruptions
+- Runtime telemetry passed to Gemini before interruption answers
+- Chunk-driven visuals, subtitles, modal pauses, and resume behavior
 - Approved knowledge docs and curated image manifest
 - Passcode gate + listener name capture
 - Single-container Next.js deployment path
@@ -29,6 +29,7 @@ Create `client/.env.local` from `client/env.example`.
 Set:
 - `GOOGLE_API_KEY`
 - optional `GEMINI_LIVE_MODEL`
+- optional `GEMINI_TTS_MODEL`
 - optional `PRESENTATION_PASSCODE`
 
 ## Run locally
@@ -40,8 +41,19 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000` and click **Begin live walkthrough**.
+Open `http://localhost:3000` and click **Begin walkthrough**.
+
+## Narration assets
+The release path uses checked-in audio snippets from `client/public/audio/narration`, driven by metadata in `client/app/presentationScript.ts`.
+
+Regenerate narration after script edits:
+
+```bash
+cd client
+npm run generate:narration
+```
 
 ## Notes
-- The app now uses direct Gemini Live with ephemeral auth tokens minted by the Next.js backend.
+- The presentation does not wait for Gemini Live before starting. Static narrator audio owns the core walkthrough.
+- Gemini Live uses ephemeral auth tokens minted by the Next.js backend and is opened around mic interruptions.
 - The old LiveKit/Pipecat runtime has been removed from the active deployment path.

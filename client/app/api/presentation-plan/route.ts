@@ -9,11 +9,9 @@ import {
   type PlannerDecision,
   type PresentationSegmentId,
 } from "@/app/presentationAgenda";
+import { getServerEnv } from "@/lib/server-env";
 
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-const PLANNER_MODEL = process.env.GEMINI_PLANNER_MODEL || "gemini-2.5-flash";
 const ACCESS_COOKIE = "beforest_presentation_access";
-const PASSCODE = process.env.PRESENTATION_PASSCODE?.trim() || "";
 
 export const revalidate = 0;
 
@@ -30,11 +28,15 @@ function parsePlannerJson(text: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    if (PASSCODE && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
+    const passcode = getServerEnv("PRESENTATION_PASSCODE")?.trim() || "";
+    const googleApiKey = getServerEnv("GOOGLE_API_KEY");
+    const plannerModel = getServerEnv("GEMINI_PLANNER_MODEL") || "gemini-2.5-flash";
+
+    if (passcode && req.cookies.get(ACCESS_COOKIE)?.value !== "granted") {
       return new NextResponse("Presentation access is locked.", { status: 401 });
     }
 
-    if (!GOOGLE_API_KEY) {
+    if (!googleApiKey) {
       throw new Error("GOOGLE_API_KEY is not defined");
     }
 
@@ -119,9 +121,9 @@ export async function POST(req: NextRequest) {
       }),
     ].join("\n");
 
-    const ai = new GoogleGenAI({ apiKey: GOOGLE_API_KEY });
+    const ai = new GoogleGenAI({ apiKey: googleApiKey });
     const response = await ai.models.generateContent({
-      model: PLANNER_MODEL,
+      model: plannerModel,
       contents: prompt,
       config: {
         temperature: 0.2,

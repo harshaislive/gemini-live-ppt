@@ -1,13 +1,14 @@
-# Beforest Gemini Client
+# Beforest Controlled Narrator Client
 
-A Next.js application for the Beforest editorial voice experience on direct Gemini Live.
+A Next.js application for the Beforest editorial voice experience: committed narration audio first, Gemini Live only for interruptions.
 
 ## Features
 
-- **Real-time conversation** with Gemini Live directly from the browser
-- **Full-bleed editorial image stage** driven by agent RPC
+- **Instant narration** from committed WAV chunks in `public/audio/narration`
+- **Real-time interruption answers** with Gemini Live directly from the browser
+- **Full-bleed editorial image stage** driven by chunk metadata
 - **Tap-to-speak microphone UX** with direct audio capture and send
-- **Live subtitles** fed by Gemini transcription events
+- **Transcript subtitles** from chunk metadata, plus Gemini transcription during interruptions
 - **Beforest-specific visual shell** using the existing Arizona fonts and palette
 
 ## Quick Start
@@ -39,7 +40,7 @@ A Next.js application for the Beforest editorial voice experience on direct Gemi
 
 ### Local Development
 
-The app uses `client/app/api/gemini-live-token/route.ts` to mint ephemeral Live API auth tokens for direct browser connections.
+The app starts from static narrator chunks in `app/presentationScript.ts`. It uses `client/app/api/gemini-live-token/route.ts` to mint ephemeral Live API auth tokens only when the listener taps the mic.
 
 ### Required Variables
 
@@ -48,16 +49,25 @@ Set your Gemini credentials in `.env.local`:
 ```bash
 GOOGLE_API_KEY=...
 GEMINI_LIVE_MODEL=gemini-2.5-flash-native-audio-preview-12-2025
+GEMINI_TTS_MODEL=gemini-2.5-flash-preview-tts
 PRESENTATION_PASSCODE=
 ```
 
 ## Usage
 
-1. **Connect** to establish a Gemini Live session
-2. **Listen** as the opening 10% narrative begins automatically
-3. **Hold the mic** to interrupt and ask grounded product questions
-4. **Watch the image stage** update when Gemini uses `show_curated_image`
-5. **Follow the subtitle ribbon** for the latest spoken words
+1. **Begin walkthrough** to play the static narrator immediately
+2. **Listen** as the video loops until each narration chunk completes
+3. **Tap the mic** to pause narration and ask grounded product questions
+4. **Watch the image stage** advance from chunk metadata
+5. **Tap again** to close the question; Gemini answers and narration resumes
+
+## Narration
+
+Regenerate committed WAV snippets after editing `app/presentationScript.ts`:
+
+```bash
+npm run generate:narration
+```
 
 ## Mobile Support
 

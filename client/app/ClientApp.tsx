@@ -159,6 +159,7 @@ export const ClientApp: React.FC = () => {
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [userTranscript, setUserTranscript] = useState("");
   const [botTtsTranscript, setBotTtsTranscript] = useState("");
+  const [liveAnswerText, setLiveAnswerText] = useState("");
   const [uiError, setUiError] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -175,6 +176,7 @@ export const ClientApp: React.FC = () => {
   const liveAnswerResumeTimeoutRef = useRef<number | null>(null);
   const preloadedNarrationAudioRef = useRef<HTMLAudioElement[]>([]);
   const pendingBotTranscriptRef = useRef("");
+  const fullBotTranscriptRef = useRef("");
   const userTranscriptRef = useRef("");
   const shouldResumeNarratorRef = useRef(false);
   const imagesRef = useRef<BeforestVisual[]>([]);
@@ -494,9 +496,11 @@ export const ClientApp: React.FC = () => {
       audio.currentTime = 0;
     }
     setBotTtsTranscript("");
+    setLiveAnswerText("");
     setUserTranscript("");
     userTranscriptRef.current = "";
     pendingBotTranscriptRef.current = "";
+    fullBotTranscriptRef.current = "";
     setIsNarratorPaused(false);
     void audio.play().catch(() => setIsNarratorPaused(true));
   }
@@ -655,7 +659,9 @@ export const ClientApp: React.FC = () => {
       const text = message.serverContent.outputTranscription.text.trim();
       if (text) {
         pendingBotTranscriptRef.current = mergeRollingWords(pendingBotTranscriptRef.current, text, 16);
+        fullBotTranscriptRef.current = mergeRollingWords(fullBotTranscriptRef.current, text, 1000);
         setBotTtsTranscript(pendingBotTranscriptRef.current);
+        setLiveAnswerText(fullBotTranscriptRef.current);
       }
     }
     if (message.serverContent?.interrupted) {
@@ -697,8 +703,10 @@ export const ClientApp: React.FC = () => {
 
     setLivePhase("connecting");
     pendingBotTranscriptRef.current = "";
+    fullBotTranscriptRef.current = "";
     userTranscriptRef.current = "";
     setBotTtsTranscript("");
+    setLiveAnswerText("");
     const promise = (async () => {
       const token = await ensureGeminiToken(buildLiveTelemetryPrompt(currentChunk));
       const ai = new GoogleGenAI({ apiKey: token.name, apiVersion: "v1alpha" });
@@ -793,7 +801,9 @@ export const ClientApp: React.FC = () => {
     setUserTranscript("");
     userTranscriptRef.current = "";
     pendingBotTranscriptRef.current = "";
+    fullBotTranscriptRef.current = "";
     setBotTtsTranscript("");
+    setLiveAnswerText("");
 
     const openedStreams: MediaStream[] = [];
     let pendingSessionPromise: Promise<Session> | null = null;
@@ -965,6 +975,15 @@ export const ClientApp: React.FC = () => {
       : "The narrator keeps control. Use the mic only when you want to interrupt."
     : "The presentation starts from committed audio, so there is no live wait at the beginning.";
 
+  const livePanelTitle = livePhase === "answering" || liveAnswerText
+    ? "Response"
+    : isMicOpen
+      ? "Your question"
+      : "Live guide";
+  const livePanelText = livePhase === "answering" || liveAnswerText
+    ? liveAnswerText || botTtsTranscript || "Answering now..."
+    : userTranscript.trim() || displayedSubtitle;
+
   function renderSubtitle(text: string) {
     return text;
   }
@@ -1020,6 +1039,24 @@ export const ClientApp: React.FC = () => {
             <p className="beforest-heading__kicker">{guideStage}</p>
             <h1 className="beforest-heading__title">{visual.hook}</h1>
           </header>
+
+          {isLiveFocus ? (
+            <section
+              className={[
+                "beforest-live-answer",
+                livePhase === "answering" || liveAnswerText ? "is-answer" : "",
+                isBotSpeaking ? "is-speaking" : "",
+              ].filter(Boolean).join(" ")}
+              aria-live="polite"
+              aria-label={livePanelTitle}
+            >
+              <div className="beforest-live-answer__meta">
+                <span>{livePanelTitle}</span>
+                {isBotSpeaking ? <span className="beforest-live-answer__pulse" aria-hidden="true" /> : null}
+              </div>
+              <p className="beforest-live-answer__text">{livePanelText}</p>
+            </section>
+          ) : null}
 
           <div className={[
             "beforest-bottom-ui",

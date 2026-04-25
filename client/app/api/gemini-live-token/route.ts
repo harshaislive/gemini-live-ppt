@@ -24,6 +24,9 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const listenerName = typeof body?.listenerName === "string" ? body.listenerName.trim() : "";
     const firstName = listenerName.split(/\s+/)[0] || "";
+    const runtimeContext = typeof body?.runtimeContext === "string"
+      ? body.runtimeContext.trim().slice(0, 4000)
+      : "";
 
     const ai = new GoogleGenAI({
       apiKey: googleApiKey,
@@ -34,6 +37,9 @@ export async function POST(req: NextRequest) {
       buildSystemInstruction() +
       (firstName
         ? `\n\nListener note:\n- The current listener's first name is ${firstName}. Use their name sparingly and naturally when it helps warmth or clarity. Do not force it into every answer, every opening, or every close.`
+        : "") +
+      (runtimeContext
+        ? `\n\nCurrent controlled presentation state:\n${runtimeContext}\n\nInterruption rule:\n- The main narrator is paused while the listener asks a question.\n- Answer only the listener's question, briefly and concretely.\n- Do not continue the main presentation.\n- End by handing back to the narrator with the provided return line or a close natural variant.`
         : "");
 
     const newSessionExpireTime = new Date(Date.now() + 1000 * 60).toISOString();

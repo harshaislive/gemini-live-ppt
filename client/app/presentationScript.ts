@@ -25,6 +25,12 @@ export type PromptAnswerAction =
   | "replay_membership"
   | "soft_close";
 
+export type PreparedFaq = {
+  id: string;
+  question: string;
+  answer: string;
+};
+
 export type NarrationChunk = {
   id: NarrationChunkId;
   sectionId: PresentationSectionId;
@@ -45,12 +51,12 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "1 / Beforest",
     visualId: "opening-forest-road",
     audioUrl: "/audio/narration/01-opening-definition.wav",
-    durationSeconds: 28.211,
+    durationSeconds: 30.491,
     resumeMode: "restart_chunk",
     returnLine: "Let's get back now.",
     nextChunkId: "access_without_ownership",
     transcript:
-      "Beforest is building permanent, regenerating food forests across India: thirteen hundred acres and growing. These are not weekend farmhouses, and this is not eco-tourism. The work is landscape-scale restoration with community ownership and disciplined execution. Degraded land is rebuilt using permaculture principles: soil, water, biodiversity, food, wildlife, and people improving together.",
+      "Before we jump into the 10% Life, let me tell you where this actually started. Beforest began with a simple question: what would it take to bring degraded land back to life, and let people belong to that land without turning it into another real estate product? So across India, we have been building permanent, regenerating food forests. Not resorts. Not weekend farmhouses. Real working landscapes where soil, water, food, wildlife, and people recover together.",
   },
   {
     id: "access_without_ownership",
@@ -58,12 +64,12 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "2 / The complete ecosystem",
     visualId: "structure-clarity",
     audioUrl: "/audio/narration/02-access-without-ownership.wav",
-    durationSeconds: 25.291,
+    durationSeconds: 40.731,
     resumeMode: "restart_chunk",
     returnLine: "Let's come back to the structure.",
     nextChunkId: "why_ten_percent",
     transcript:
-      "The system has five doors into the same landscape. Beforest dot co is the core: land, restoration, and collective ownership. Bewild is food from the collectives: coffee, rice, spices, oils, and produce grown from this way of working. Hospitality is Blyton Bungalow in Coorg. Experiences are the deeper ways to enter the land. And 10% is for people who want recurring access without ownership burden: thirty person-nights a year, for ten years.",
+      "10% comes from this larger Beforest world. At the center are the collectives: large restored landscapes where members come together to co-own, steward, and participate in regeneration. Around that, there are experiences inside the collectives: walks, volunteering, coffee, night skies, family programs, and ways to come close to the land. There is hospitality, like Blyton Bungalow in Coorg. And there is Bewild, which carries food grown in these collectives out into the world: coffee, rice, spices, oils, and more. 10% is not separate from this. It is built from the same landscapes.",
   },
   {
     id: "why_ten_percent",
@@ -71,12 +77,12 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "3 / Why 10% works",
     visualId: "protected-time-canopy",
     audioUrl: "/audio/narration/03-why-ten-percent.wav",
-    durationSeconds: 23.331,
+    durationSeconds: 37.171,
     resumeMode: "restart_chunk",
     returnLine: "Let's return to why the rhythm matters.",
     nextChunkId: "what_it_feels_like",
     transcript:
-      "People arrive here from different places. Some are burnt out by work. Some want their children closer to nature. Some are curious because they have seen Beforest food, stays, or collectives from the outside. The 10% idea meets them in the same place: protect a small but serious part of the year, and the rest of life has a better chance of settling down.",
+      "But not everyone who belongs to this world wants to become a collective member. Some people do not want to own part of a collective. They do not want voting responsibilities, land decisions, farming conversations, staff management, or the emotional and financial weight of ownership. But they still want access to these landscapes. Not as tourists. Not as one-time guests. They want to return. They want their children to know these places. They want food, weather, walking, quiet, and the feeling of being connected to land through the year. That is why we created 10%.",
   },
   {
     id: "what_it_feels_like",
@@ -84,12 +90,12 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "4 / What it feels like",
     visualId: "collective-landscape",
     audioUrl: "/audio/narration/04-what-it-feels-like.wav",
-    durationSeconds: 23.051,
+    durationSeconds: 29.011,
     resumeMode: "restart_chunk",
     returnLine: "Let's step back into the place.",
     nextChunkId: "proof_and_limit",
     transcript:
-      "The experience is not just a room. It is the landscape, the food, the weather, the walking, the farms, the quiet, and the people who are stewarding the place. Hospitality is the front door, but the deeper value is repetition. You return enough times for the place to become familiar, not just impressive.",
+      "10% is a serious access membership. A 10% member gets thirty person-nights a year, for ten years, across Beforest landscapes. And let me say that clearly: thirty person-nights. Not thirty room nights. It is measured by the number of people using the landscape across the year. So you are not buying land. You are not becoming a collective owner. But you are also not just booking a holiday. You are reserving a recurring relationship with these landscapes.",
   },
   {
     id: "proof_and_limit",
@@ -97,12 +103,12 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "5 / Proof and limit",
     visualId: "proof-restoration",
     audioUrl: "/audio/narration/05-proof-and-limit.wav",
-    durationSeconds: 23.491,
+    durationSeconds: 30.851,
     resumeMode: "restart_chunk",
     returnLine: "Let's return to the proof.",
     nextChunkId: "membership_structure",
     transcript:
-      "The proof has to be on the ground. Beforest has spent years building collectives, restoring degraded land, creating hospitality inside those landscapes, and selling food through Bewild that comes from this way of working. The work now spans six collectives and more than a thousand acres under restoration. That is why 10% is limited by design.",
+      "The value is not just where you sleep. It is waking up inside a landscape that is being restored. It is eating food from the same land. It is walking under canopy, watching the weather change, hearing fewer machines and more life. The first visit may feel beautiful. But the real shift happens when you return again and again. That is when the land stops being a destination and starts becoming part of your rhythm.",
   },
   {
     id: "membership_structure",
@@ -110,12 +116,12 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "6 / The structure",
     visualId: "structure-clarity",
     audioUrl: "/audio/narration/06-membership-structure.wav",
-    durationSeconds: 23.251,
+    durationSeconds: 35.931,
     resumeMode: "restart_chunk",
     returnLine: "Let's get back to the membership.",
     nextChunkId: "blyton_first",
     transcript:
-      "The structure is intentionally plain. A 10% member gets thirty person-nights a year, for ten years, across Beforest landscapes. It is access without full ownership. You are not buying a second home, and you are not just booking a holiday. You are reserving a recurring relationship with these places before the calendar fills up again.",
+      "We are careful with 10% because access to real landscapes has to be designed responsibly. These are not empty holiday properties. These are living, working collectives. The land has to keep improving. The communities have to keep functioning. The experience has to stay quiet, limited, and respectful of the place. Beforest has spent years building collectives, restoring land, growing food through Bewild, and creating hospitality inside these landscapes. 10% works only because that foundation already exists.",
   },
   {
     id: "blyton_first",
@@ -123,12 +129,12 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "7 / Blyton first",
     visualId: "trial-stay",
     audioUrl: "/audio/narration/07-blyton-first.wav",
-    durationSeconds: 23.091,
+    durationSeconds: 25.771,
     resumeMode: "restart_chunk",
     returnLine: "Let's return to the first real step.",
     nextChunkId: "decision_close",
     transcript:
-      "You should not decide this from a screen. The first real step is a stay, because the land will explain the idea better than I can. Go there. Eat the food. Walk the place. Notice whether your family actually wants to return. If the landscape makes sense in your body, the membership conversation becomes much simpler.",
+      "If you are wondering whether this is right for you, our honest suggestion is: do not decide from a screen. Start with Blyton. Come to Coorg. Stay there. Walk the land. Eat the food. Have coffee in the rain. See how your body responds before your mind turns it into a spreadsheet. If the place makes sense to you and your family, the 10% conversation becomes much easier.",
   },
   {
     id: "decision_close",
@@ -136,11 +142,56 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "8 / The first step",
     visualId: "art-of-return-hero",
     audioUrl: "/audio/narration/08-decision-close.wav",
-    durationSeconds: 24.411,
+    durationSeconds: 36.371,
     resumeMode: "next_chunk",
     returnLine: "Let's close this properly.",
     transcript:
-      "If this feels serious, start with a stay. If you need more time, follow the updates and watch how the collectives, hospitality, and Bewild food system keep developing. There is no pressure in this. But if you already know you need a different rhythm, do not turn it into an abstract decision. Decide with your feet, not your eyes. See you in the slow lane.",
+      "So that is the invitation. If you want to co-own and steward land, the collectives are the right path. If you want food from these landscapes, Bewild already brings that to you. If you want to experience the land first, hospitality and experiences are the right door. And if what you want is recurring access to Beforest landscapes without becoming a collective owner, then 10% was built for you. Thirty person-nights a year. Ten years. Access to real regenerating landscapes, without ownership burden. Start with the land. The decision should come after that.",
+  },
+];
+
+export const PREPARED_FAQS: PreparedFaq[] = [
+  {
+    id: "families",
+    question: "How does this work for couples and families?",
+    answer:
+      "Immediate family participation is allowed. The important thing is that usage is counted as person-nights, so the access stays fair and clear across families of different sizes.",
+  },
+  {
+    id: "person-nights",
+    question: "Why count person-nights instead of room nights?",
+    answer:
+      "Because 10% is designed as recurring access to the landscape, not a room inventory product. Person-nights make the actual use of the land visible while still making room for family participation.",
+  },
+  {
+    id: "children",
+    question: "Do children count toward the person-night usage?",
+    answer:
+      "The Founding Silence clarification said immediate family participation is allowed, and children under twelve do not count toward person-night usage. That keeps the model family-friendly while still making adult usage clear.",
+  },
+  {
+    id: "long-stretches",
+    question: "Can the nights be used in long stretches?",
+    answer:
+      "Yes, longer stays are possible, subject to availability and the broader effort to keep access workable for everyone. The spirit is rhythm, not hoarding peak dates.",
+  },
+  {
+    id: "carry-forward",
+    question: "Will unused nights carry forward?",
+    answer:
+      "No. There is no carry-forward because the point is rhythm, not accumulation. 10% is meant to pull you back to the land each year, not become a balance you optimize later.",
+  },
+  {
+    id: "weekends",
+    question: "How much of the allocation can sit on weekends?",
+    answer:
+      "The Founding Silence conversation described a two-to-one weekday-to-weekend balance. In simple terms, for every weekend booking, members should expect roughly two weekday nights as well, so access does not collapse onto a few peak dates.",
+  },
+  {
+    id: "timeshare",
+    question: "How is this different from a timeshare?",
+    answer:
+      "The similarity is only at the surface level of access. The real difference is density, intent, and relationship to land. 10% is about returning to regenerating Beforest landscapes as a way of life, not buying leisure inventory.",
   },
 ];
 

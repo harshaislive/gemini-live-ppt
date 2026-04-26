@@ -24,6 +24,8 @@ node_modules
 .DS_Store
 *.pem
 10 percent .mp4
+.leads/
+client/.leads/
 
 # debug
 npm-debug.log*

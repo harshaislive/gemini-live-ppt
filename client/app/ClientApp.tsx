@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { INITIAL_VISUAL } from "./beforest";
 import {
   NARRATION_CHUNKS,
+  PREPARED_FAQS,
   buildTranscriptWindow,
   getGateAfterChunk,
   getNarrationChunk,
@@ -21,6 +22,7 @@ import {
   type NarrationChunk,
   type NarrationChunkId,
   type NarrationGate,
+  type PreparedFaq,
 } from "./presentationScript";
 import {
   type BeforestVisual,
@@ -269,6 +271,8 @@ export const ClientApp: React.FC = () => {
   const [botTtsTranscript, setBotTtsTranscript] = useState("");
   const [liveAnswerText, setLiveAnswerText] = useState("");
   const [subscribeStep, setSubscribeStep] = useState<number | null>(null);
+  const [activeFaqId, setActiveFaqId] = useState<string | null>(null);
+  const [isFaqReading, setIsFaqReading] = useState(false);
   const [subscribeForm, setSubscribeForm] = useState<SubscribeForm>({
     name: "",
     email: "",
@@ -362,6 +366,9 @@ export const ClientApp: React.FC = () => {
     ? SUBSCRIBE_QUESTIONS[subscribeStep - 1]
     : null;
   const subscribeProgress = subscribeStep === null ? 0 : ((subscribeStep + 1) / (SUBSCRIBE_QUESTIONS.length + 1)) * 100;
+  const activeFaq = activeFaqId
+    ? PREPARED_FAQS.find((faq) => faq.id === activeFaqId) || PREPARED_FAQS[0]
+    : null;
 
   useEffect(() => {
     const activeLiveSources = activeLiveSourcesRef.current;
@@ -376,6 +383,7 @@ export const ClientApp: React.FC = () => {
       .catch(() => setAccessState({ requiresPasscode: true, authorized: false }));
 
     return () => {
+      stopFaqReading();
       stopLocalSpeechPreview();
       const recorder = recorderRef.current;
       recorderRef.current = null;
@@ -676,6 +684,46 @@ export const ClientApp: React.FC = () => {
   function closeSubscribeFlow() {
     setSubscribeError("");
     setSubscribeStep(null);
+  }
+
+  function openFaqModal(faq: PreparedFaq = PREPARED_FAQS[0]) {
+    const audio = audioRef.current;
+    if (audio && !audio.paused) {
+      audio.pause();
+      setIsNarratorPaused(true);
+    }
+    setUiError(null);
+    setActiveFaqId(faq.id);
+  }
+
+  function closeFaqModal() {
+    stopFaqReading();
+    setActiveFaqId(null);
+  }
+
+  function stopFaqReading() {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setIsFaqReading(false);
+      return;
+    }
+    window.speechSynthesis.cancel();
+    setIsFaqReading(false);
+  }
+
+  function playFaqAnswer(faq: PreparedFaq) {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      setUiError("This browser cannot read the FAQ aloud. You can still read the answer here.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(`${faq.question}. ${faq.answer}`);
+    utterance.lang = "en-IN";
+    utterance.rate = 0.92;
+    utterance.pitch = 0.92;
+    utterance.onend = () => setIsFaqReading(false);
+    utterance.onerror = () => setIsFaqReading(false);
+    setIsFaqReading(true);
+    window.speechSynthesis.speak(utterance);
   }
 
   function updateSubscribeField<Key extends keyof SubscribeForm>(field: Key, value: SubscribeForm[Key]) {
@@ -1371,16 +1419,12 @@ export const ClientApp: React.FC = () => {
   }
 
   function renderTrackedNarrationSubtitle() {
-    const words = currentChunk.transcript.split(/\s+/).filter(Boolean);
-    const wordsPerPhrase = 5;
-    const phraseSeconds = 2.7;
-    const phraseIndex = Math.max(0, Math.floor((narratorElapsedSeconds + SUBTITLE_LEAD_SECONDS) / phraseSeconds));
-    const start = Math.min(
-      Math.max(0, words.length - wordsPerPhrase),
-      phraseIndex * wordsPerPhrase,
+    return narratorSubtitle || buildTranscriptWindow(
+      currentChunk.transcript,
+      narratorElapsedSeconds,
+      currentChunk.durationSeconds,
+      SUBTITLE_LEAD_SECONDS,
     );
-    const end = Math.min(words.length, start + wordsPerPhrase);
-    return words.slice(start, end).join(" ");
   }
 
   return (
@@ -1421,6 +1465,17 @@ export const ClientApp: React.FC = () => {
             <p className="beforest-heading__kicker">{guideStage}</p>
             <h1 className="beforest-heading__title">{visual.hook}</h1>
           </header>
+
+          {shouldShowDecisionCta ? (
+            <button
+              type="button"
+              className="beforest-faq-trigger"
+              onClick={() => openFaqModal()}
+              aria-label="Open prepared 10 percent questions"
+            >
+              FAQ
+            </button>
+          ) : null}
 
           {isLiveFocus ? (
             <section
@@ -1669,6 +1724,58 @@ export const ClientApp: React.FC = () => {
                     </div>
                   </>
                 ) : null}
+              </section>
+            </div>
+          ) : null}
+
+          {activeFaq ? (
+            <div className="beforest-question-backdrop beforest-faq-backdrop" role="presentation">
+              <section
+                className="beforest-question-modal beforest-faq-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="beforest-faq-title"
+              >
+                <div className="beforest-faq-modal__top">
+                  <div>
+                    <p className="beforest-question-eyebrow">Prepared FAQ</p>
+                    <h2 id="beforest-faq-title">Questions from The Founding Silence</h2>
+                  </div>
+                  <button type="button" className="beforest-faq-close" onClick={closeFaqModal}>
+                    Close
+                  </button>
+                </div>
+
+                <div className="beforest-faq-layout">
+                  <div className="beforest-faq-list" aria-label="FAQ questions">
+                    {PREPARED_FAQS.map((faq) => (
+                      <button
+                        key={faq.id}
+                        type="button"
+                        className={faq.id === activeFaq.id ? "is-active" : ""}
+                        onClick={() => {
+                          stopFaqReading();
+                          setActiveFaqId(faq.id);
+                        }}
+                      >
+                        {faq.question}
+                      </button>
+                    ))}
+                  </div>
+                  <article className="beforest-faq-answer">
+                    <h3>{activeFaq.question}</h3>
+                    <div className="beforest-faq-answer__scroll">
+                      <p>{activeFaq.answer}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="beforest-faq-play"
+                      onClick={() => isFaqReading ? stopFaqReading() : playFaqAnswer(activeFaq)}
+                    >
+                      {isFaqReading ? "Stop reading" : "Play answer"}
+                    </button>
+                  </article>
+                </div>
               </section>
             </div>
           ) : null}

@@ -2241,6 +2241,82 @@ a:focus-visible {
   box-shadow: none;
 }
 
+.beforest-subscribe-modal {
+  width: min(100%, 35rem);
+  overflow: hidden;
+}
+
+.beforest-subscribe-progress {
+  height: 3px;
+  margin: -2px 0 18px;
+  background: rgba(253, 251, 247, 0.1);
+}
+
+.beforest-subscribe-progress span {
+  display: block;
+  height: 100%;
+  background: var(--sand);
+  transition: width 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.beforest-subscribe-form {
+  display: grid;
+}
+
+.beforest-subscribe-fields {
+  display: grid;
+  gap: 9px;
+  margin-top: 20px;
+}
+
+.beforest-subscribe-error {
+  margin: 14px 0 0;
+  color: var(--sand);
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+.beforest-subscribe-input {
+  width: 100%;
+  min-height: 3.1rem;
+  padding: 0 14px;
+  border: 1px solid rgba(253, 251, 247, 0.18);
+  border-radius: 2px;
+  background: rgba(253, 251, 247, 0.07);
+  color: var(--off-white);
+  font: inherit;
+}
+
+.beforest-subscribe-input::placeholder {
+  color: rgba(253, 251, 247, 0.48);
+}
+
+.beforest-subscribe-options button {
+  position: relative;
+  min-height: 3.1rem;
+  padding: 0 14px;
+}
+
+.beforest-subscribe-options button.is-selected,
+.beforest-subscribe-options button:active {
+  border-color: rgba(255, 192, 131, 0.44);
+  background: rgba(255, 192, 131, 0.14);
+}
+
+.beforest-subscribe-actions {
+  justify-content: space-between;
+}
+
+.beforest-subscribe-next {
+  min-height: 2.75rem;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--sand);
+  color: #1f1711;
+  font: inherit;
+}
+
 @media (max-width: 768px) {
   .beforest-bottom-ui.is-cta-mode {
     bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
@@ -2253,5 +2329,30 @@ a:focus-visible {
 
   .beforest-cta-title {
     font-size: clamp(1.2rem, 5.6vw, 1.55rem);
+  }
+
+  .beforest-subscribe-modal {
+    width: calc(100vw - 28px);
+    max-height: calc(100dvh - 28px);
+    padding: 20px 16px 16px;
+  }
+
+  .beforest-subscribe-fields {
+    gap: 8px;
+  }
+
+  .beforest-subscribe-input,
+  .beforest-subscribe-options button {
+    min-height: 3.25rem;
+    font-size: 0.96rem;
+  }
+
+  .beforest-subscribe-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .beforest-subscribe-actions .beforest-subscribe-next {
+    grid-column: 2;
   }
 }

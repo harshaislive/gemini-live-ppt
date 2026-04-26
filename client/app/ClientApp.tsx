@@ -71,7 +71,25 @@ type PromptModal = {
   suggestedAnswers: string[];
 };
 
+type SubscribeForm = {
+  name: string;
+  email: string;
+  phone: string;
+  interest: string;
+  timing: string;
+  firstUpdate: string;
+};
+
+type SubscribeQuestion = {
+  id: keyof Pick<SubscribeForm, "interest" | "timing" | "firstUpdate">;
+  eyebrow: string;
+  question: string;
+  context: string;
+  options: string[];
+};
+
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
+const SUBSCRIBE_LEAD_STORAGE_KEY = "beforest_updates_lead";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_VOICE_ID = "Gacrux";
 const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence";
@@ -81,6 +99,29 @@ const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 const CONTINUOUS_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-1080.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
 const SUBTITLE_LEAD_SECONDS = 1.8;
+const SUBSCRIBE_QUESTIONS: SubscribeQuestion[] = [
+  {
+    id: "interest",
+    eyebrow: "Signal 1 / Interest",
+    question: "What should Beforest keep you close to?",
+    context: "Choose the reason updates would be useful, so the next note can stay relevant.",
+    options: ["Blyton trial stay", "10% membership", "Land restoration", "Family rhythm"],
+  },
+  {
+    id: "timing",
+    eyebrow: "Signal 2 / Timing",
+    question: "When would this become real for you?",
+    context: "This helps separate immediate trial intent from slower listening.",
+    options: ["Next 30 days", "1-3 months", "Later this year", "Just learning"],
+  },
+  {
+    id: "firstUpdate",
+    eyebrow: "Signal 3 / First note",
+    question: "What should arrive first?",
+    context: "Pick the update that would make the next step clearer.",
+    options: ["Blyton availability", "Membership overview", "Restoration stories", "Quiet launch notes"],
+  },
+];
 
 function getMicCapabilityError() {
   if (typeof window === "undefined") {
@@ -160,6 +201,16 @@ export const ClientApp: React.FC = () => {
   const [userTranscript, setUserTranscript] = useState("");
   const [botTtsTranscript, setBotTtsTranscript] = useState("");
   const [liveAnswerText, setLiveAnswerText] = useState("");
+  const [subscribeStep, setSubscribeStep] = useState<number | null>(null);
+  const [subscribeForm, setSubscribeForm] = useState<SubscribeForm>({
+    name: "",
+    email: "",
+    phone: "",
+    interest: "",
+    timing: "",
+    firstUpdate: "",
+  });
+  const [subscribeError, setSubscribeError] = useState("");
   const [uiError, setUiError] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -187,7 +238,7 @@ export const ClientApp: React.FC = () => {
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
   const shouldShowAccessForm = Boolean(accessState && (!accessState.authorized || shouldShowNameForm));
   const isLiveBusy = livePhase === "connecting" || livePhase === "answering";
-  const canUsePrimaryAction = isAccessReady && !isPreparing && !promptModal && !isLiveBusy;
+  const canUsePrimaryAction = isAccessReady && !isPreparing && !promptModal && subscribeStep === null && !isLiveBusy;
 
   const guideStage = isPresentationStarted ? currentChunk.stageLabel : "Beforest 10% Life";
   const displayedSubtitle = useMemo(() => {
@@ -232,6 +283,10 @@ export const ClientApp: React.FC = () => {
   const isLiveFocus = isMicOpen || livePhase === "connecting" || livePhase === "answering";
   const shouldShowDecisionCta = showDecisionCta && !isLiveFocus;
   const shouldTrackNarrationWords = isPresentationStarted && !isLiveFocus && !shouldShowAccessForm && !promptModal;
+  const activeSubscribeQuestion = subscribeStep && subscribeStep > 0
+    ? SUBSCRIBE_QUESTIONS[subscribeStep - 1]
+    : null;
+  const subscribeProgress = subscribeStep === null ? 0 : ((subscribeStep + 1) / (SUBSCRIBE_QUESTIONS.length + 1)) * 100;
 
   useEffect(() => {
     const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY);
@@ -457,6 +512,78 @@ export const ClientApp: React.FC = () => {
     setPromptModal(null);
     setBotTtsTranscript(`Noted: ${answer}`);
     playNextChunk();
+  }
+
+  function openSubscribeFlow() {
+    setSubscribeForm((previous) => ({
+      ...previous,
+      name: previous.name || listenerName.trim(),
+    }));
+    setUiError(null);
+    setSubscribeError("");
+    setSubscribeStep(0);
+  }
+
+  function closeSubscribeFlow() {
+    setSubscribeError("");
+    setSubscribeStep(null);
+  }
+
+  function updateSubscribeField<Key extends keyof SubscribeForm>(field: Key, value: SubscribeForm[Key]) {
+    setSubscribeForm((previous) => ({ ...previous, [field]: value }));
+  }
+
+  function submitSubscribeContact(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const name = subscribeForm.name.trim();
+    const email = subscribeForm.email.trim();
+    const phone = subscribeForm.phone.trim();
+    if (!name || !email || !phone) {
+      setSubscribeError("Add your name, email, and phone to continue.");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setSubscribeError("Enter a valid email address.");
+      return;
+    }
+    setSubscribeForm((previous) => ({ ...previous, name, email, phone }));
+    setSubscribeError("");
+    setSubscribeStep(1);
+  }
+
+  function handleSubscribeAnswer(question: SubscribeQuestion, answer: string) {
+    setSubscribeForm((previous) => {
+      const next = { ...previous, [question.id]: answer };
+      const nextStep = (subscribeStep ?? 1) + 1;
+      if (nextStep > SUBSCRIBE_QUESTIONS.length) {
+        window.localStorage.setItem(SUBSCRIBE_LEAD_STORAGE_KEY, JSON.stringify({
+          ...next,
+          capturedAt: new Date().toISOString(),
+        }));
+        const url = new URL(FOUNDING_SILENCE_URL);
+        url.searchParams.set("name", next.name);
+        url.searchParams.set("email", next.email);
+        url.searchParams.set("phone", next.phone);
+        url.searchParams.set("interest", next.interest);
+        url.searchParams.set("timing", next.timing);
+        url.searchParams.set("first_update", next.firstUpdate);
+        window.open(url.toString(), "_blank", "noreferrer");
+        setSubscribeStep(null);
+      } else {
+        setSubscribeStep(nextStep);
+      }
+      return next;
+    });
+  }
+
+  function goBackSubscribeStep() {
+    setSubscribeError("");
+    setSubscribeStep((previous) => {
+      if (previous === null || previous <= 0) {
+        return null;
+      }
+      return previous - 1;
+    });
   }
 
   function toggleNarratorPause() {
@@ -991,7 +1118,7 @@ export const ClientApp: React.FC = () => {
       : "Live guide";
   const livePanelText = livePhase === "answering" || liveAnswerText
     ? liveAnswerText || botTtsTranscript || "Answering now..."
-    : userTranscript.trim() || displayedSubtitle;
+    : userTranscript.trim();
 
   function renderSubtitle(text: string) {
     return text;
@@ -1063,7 +1190,9 @@ export const ClientApp: React.FC = () => {
                 <span>{livePanelTitle}</span>
                 {isBotSpeaking ? <span className="beforest-live-answer__pulse" aria-hidden="true" /> : null}
               </div>
-              <p className="beforest-live-answer__text">{livePanelText}</p>
+              {livePanelText ? (
+                <p className="beforest-live-answer__text">{livePanelText}</p>
+              ) : null}
             </section>
           ) : null}
 
@@ -1177,9 +1306,9 @@ export const ClientApp: React.FC = () => {
                 <a className="beforest-cta-button" href={TRIAL_STAY_URL} target="_blank" rel="noreferrer">
                   Take a trial stay
                 </a>
-                <a className="beforest-cta-button secondary" href={FOUNDING_SILENCE_URL} target="_blank" rel="noreferrer">
+                <button type="button" className="beforest-cta-button secondary" onClick={openSubscribeFlow}>
                   Subscribe for updates
-                </a>
+                </button>
               </div>
             ) : null}
           </div>
@@ -1202,6 +1331,96 @@ export const ClientApp: React.FC = () => {
                     Skip
                   </button>
                 </div>
+              </section>
+            </div>
+          ) : null}
+
+          {subscribeStep !== null ? (
+            <div className="beforest-question-backdrop" role="presentation">
+              <section
+                className="beforest-question-modal beforest-subscribe-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="beforest-subscribe-title"
+              >
+                <div className="beforest-subscribe-progress" aria-hidden="true">
+                  <span style={{ width: `${subscribeProgress}%` }} />
+                </div>
+
+                {subscribeStep === 0 ? (
+                  <form className="beforest-subscribe-form" onSubmit={submitSubscribeContact}>
+                    <p className="beforest-question-eyebrow">Updates / Contact</p>
+                    <h2 id="beforest-subscribe-title">Where should Beforest reach you?</h2>
+                    <p className="beforest-question-context">
+                      Share the essentials first. The next three taps help shape what you receive.
+                    </p>
+                    {subscribeError ? (
+                      <p className="beforest-subscribe-error" role="alert">
+                        {subscribeError}
+                      </p>
+                    ) : null}
+                    <div className="beforest-subscribe-fields">
+                      <input
+                        className="beforest-subscribe-input"
+                        type="text"
+                        value={subscribeForm.name}
+                        onChange={(event) => updateSubscribeField("name", event.target.value)}
+                        placeholder="Name"
+                        autoComplete="name"
+                      />
+                      <input
+                        className="beforest-subscribe-input"
+                        type="email"
+                        value={subscribeForm.email}
+                        onChange={(event) => updateSubscribeField("email", event.target.value)}
+                        placeholder="Email"
+                        autoComplete="email"
+                      />
+                      <input
+                        className="beforest-subscribe-input"
+                        type="tel"
+                        value={subscribeForm.phone}
+                        onChange={(event) => updateSubscribeField("phone", event.target.value)}
+                        placeholder="Phone"
+                        autoComplete="tel"
+                      />
+                    </div>
+                    <div className="beforest-question-actions beforest-subscribe-actions">
+                      <button type="button" className="beforest-question-skip" onClick={closeSubscribeFlow}>
+                        Close
+                      </button>
+                      <button type="submit" className="beforest-subscribe-next">
+                        Continue
+                      </button>
+                    </div>
+                  </form>
+                ) : activeSubscribeQuestion ? (
+                  <>
+                    <p className="beforest-question-eyebrow">{activeSubscribeQuestion.eyebrow}</p>
+                    <h2 id="beforest-subscribe-title">{activeSubscribeQuestion.question}</h2>
+                    <p className="beforest-question-context">{activeSubscribeQuestion.context}</p>
+                    <div className="beforest-question-options beforest-subscribe-options">
+                      {activeSubscribeQuestion.options.map((answer) => (
+                        <button
+                          key={answer}
+                          type="button"
+                          className={subscribeForm[activeSubscribeQuestion.id] === answer ? "is-selected" : ""}
+                          onClick={() => handleSubscribeAnswer(activeSubscribeQuestion, answer)}
+                        >
+                          {answer}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="beforest-question-actions beforest-subscribe-actions">
+                      <button type="button" className="beforest-question-skip" onClick={goBackSubscribeStep}>
+                        Back
+                      </button>
+                      <button type="button" className="beforest-question-skip" onClick={closeSubscribeFlow}>
+                        Close
+                      </button>
+                    </div>
+                  </>
+                ) : null}
               </section>
             </div>
           ) : null}

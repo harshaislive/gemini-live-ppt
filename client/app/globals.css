@@ -1528,15 +1528,15 @@ a:focus-visible {
 
 .beforest-mic-button.is-open,
 .beforest-mic-button.is-speaking {
-  border-color: rgba(184, 220, 153, 0.38);
-  background: rgba(52, 71, 54, 0.86);
+  border-color: rgba(253, 251, 247, 0.46);
+  background: rgba(0, 0, 0, 0.82);
   transform: scale(0.985);
 }
 
 .beforest-mic-button.is-open .beforest-mic-button__surface,
 .beforest-mic-button.is-speaking .beforest-mic-button__surface {
-  border-color: rgba(184, 220, 153, 0.34);
-  background: rgba(65, 92, 67, 0.94);
+  border-color: rgba(253, 251, 247, 0.4);
+  background: rgba(253, 251, 247, 0.08);
 }
 
 .beforest-mic-button.is-speaking .beforest-mic-button__ring,
@@ -1758,12 +1758,12 @@ a:focus-visible {
 
 .beforest-mic-button.is-open,
 .beforest-mic-button.is-speaking {
-  background: rgba(52, 71, 54, 0.92);
+  background: rgba(0, 0, 0, 0.82);
 }
 
 .beforest-mic-button.is-open .beforest-mic-button__surface,
 .beforest-mic-button.is-speaking .beforest-mic-button__surface {
-  background: rgba(184, 220, 153, 0.12);
+  background: rgba(253, 251, 247, 0.08);
 }
 
 @media (max-width: 768px) {
@@ -1881,9 +1881,11 @@ a:focus-visible {
   font-size: clamp(1.1rem, 2.3vw, 1.46rem);
   line-height: 1.22;
   letter-spacing: -0.008em;
-  white-space: nowrap;
+  display: -webkit-box;
+  white-space: normal;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
   text-shadow: 0 10px 30px rgba(20, 16, 13, 0.72);
 }
 
@@ -1980,8 +1982,8 @@ a:focus-visible {
 .beforest-mic-button.is-speaking,
 .beforest-mic-button.is-open .beforest-mic-button__surface,
 .beforest-mic-button.is-speaking .beforest-mic-button__surface {
-  border-color: rgba(184, 220, 153, 0.44);
-  background: rgba(52, 71, 54, 0.56);
+  border-color: rgba(253, 251, 247, 0.46);
+  background: rgba(0, 0, 0, 0.82);
 }
 
 .beforest-action-label {
@@ -2138,8 +2140,8 @@ a:focus-visible {
   height: 10px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: var(--sage);
-  box-shadow: 0 0 0 7px rgba(184, 220, 153, 0.12);
+  background: var(--sand);
+  box-shadow: 0 0 0 7px rgba(255, 192, 131, 0.14);
   animation: beforestPulse 1.8s ease-in-out infinite;
 }
 
@@ -2177,8 +2179,8 @@ a:focus-visible {
 .beforest-cta-card,
 .beforest-question-modal,
 .beforest-live-answer {
-  background: rgba(0, 0, 0, 0.76);
-  box-shadow: 0 28px 76px rgba(0, 0, 0, 0.42);
+  background: rgba(0, 0, 0, 0.68);
+  box-shadow: 0 22px 58px rgba(0, 0, 0, 0.32);
 }
 
 .beforest-question-backdrop {

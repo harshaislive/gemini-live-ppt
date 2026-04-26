@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { NARRATION_CHUNKS } from "./presentationScript";
 import "./globals.css";
 
 const arizonaFlare = localFont({
@@ -48,17 +47,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        {NARRATION_CHUNKS.map((chunk) => (
-          <link
-            key={chunk.id}
-            rel="preload"
-            href={chunk.audioUrl}
-            as="audio"
-            type="audio/wav"
-          />
-        ))}
-      </head>
       <body className={`${arizonaFlare.variable} ${arizonaSans.variable}`}>
         {children}
       </body>

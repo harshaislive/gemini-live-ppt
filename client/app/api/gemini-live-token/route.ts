@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     const token = await ai.authTokens.create({ config });
     return NextResponse.json({ name: token.name, model: liveModel, newSessionExpireTime, expireTime });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create Gemini token";
-    return new NextResponse(message, { status: 500 });
+    console.error("Failed to create Gemini Live token", error);
+    return new NextResponse("Gemini Live is temporarily unavailable.", { status: 503 });
   }
 }

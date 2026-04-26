@@ -17,6 +17,7 @@ import {
   getGateAfterChunk,
   getNarrationChunk,
   getNextNarrationChunk,
+  getPromptAnswerAction,
   type NarrationChunk,
   type NarrationChunkId,
   type NarrationGate,
@@ -218,16 +219,26 @@ function sleep(ms: number) {
 }
 
 function isRetryableLiveError(error: unknown) {
-  if (!(error instanceof Error)) {
+  const message = error instanceof Error
+    ? error.message || ""
+    : typeof error === "object" && error && "message" in error
+      ? String((error as { message?: unknown }).message || "")
+      : "";
+  if (!message) {
     return false;
   }
-  const message = error.message || "";
   return /\b(503|service unavailable|unavailable|overloaded|try again)\b/i.test(message);
 }
 
 function getLiveConnectionError(error: unknown) {
   if (isRetryableLiveError(error)) {
     return "Gemini Live is temporarily unavailable. The walkthrough will continue; try the mic again in a moment.";
+  }
+  if (typeof error === "object" && error && "message" in error) {
+    const message = String((error as { message?: unknown }).message || "").trim();
+    if (message) {
+      return "Gemini Live could not complete that turn. Returning to the walkthrough.";
+    }
   }
   return getMicrophoneRuntimeError(error);
 }
@@ -298,7 +309,11 @@ export const ClientApp: React.FC = () => {
   const shouldShowNameForm = Boolean(accessState && !hasConfirmedListener);
   const shouldShowAccessForm = Boolean(accessState && (!accessState.authorized || shouldShowNameForm));
   const isLiveBusy = livePhase === "connecting" || livePhase === "answering";
-  const canUsePrimaryAction = isAccessReady && !isPreparing && !promptModal && subscribeStep === null && !isLiveBusy;
+  const canUsePrimaryAction = isAccessReady
+    && !isPreparing
+    && !promptModal
+    && subscribeStep === null
+    && livePhase !== "connecting";
 
   const guideStage = isPresentationStarted ? currentChunk.stageLabel : "Beforest 10% Life";
   const displayedSubtitle = useMemo(() => {
@@ -340,7 +355,7 @@ export const ClientApp: React.FC = () => {
   ]);
 
   const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
-  const isLiveFocus = isMicOpen || livePhase === "connecting" || livePhase === "answering";
+  const isLiveFocus = isMicOpen || livePhase === "answering";
   const shouldShowDecisionCta = showDecisionCta && !isLiveFocus;
   const shouldTrackNarrationWords = isPresentationStarted && !isLiveFocus && !shouldShowAccessForm && !promptModal;
   const activeSubscribeQuestion = subscribeStep && subscribeStep > 0
@@ -349,6 +364,7 @@ export const ClientApp: React.FC = () => {
   const subscribeProgress = subscribeStep === null ? 0 : ((subscribeStep + 1) / (SUBSCRIBE_QUESTIONS.length + 1)) * 100;
 
   useEffect(() => {
+    const activeLiveSources = activeLiveSourcesRef.current;
     const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY);
     if (storedName) {
       setListenerName(storedName);
@@ -361,15 +377,39 @@ export const ClientApp: React.FC = () => {
 
     return () => {
       stopLocalSpeechPreview();
-      stopRecorder();
-      stopLivePlayback();
+      const recorder = recorderRef.current;
+      recorderRef.current = null;
+      if (recorder) {
+        try {
+          recorder.worklet?.disconnect();
+          recorder.worklet?.port.close();
+          recorder.processor?.disconnect();
+          recorder.source.disconnect();
+          recorder.gain.disconnect();
+        } catch {
+          // Already disconnected.
+        }
+        recorder.stream.getTracks().forEach((track) => track.stop());
+        void recorder.context.close();
+      }
+      activeLiveSources.forEach((source) => {
+        try {
+          source.stop();
+        } catch {
+          // Already stopped.
+        }
+      });
+      activeLiveSources.clear();
       void sessionRef.current?.close?.();
       sessionRef.current = null;
+      liveConnectPromiseRef.current = null;
+      liveSocketOpenRef.current = false;
       if (outputAudioContextRef.current) {
         void outputAudioContextRef.current.close();
       }
       liveQuestionActiveRef.current = false;
       clearAnswerTimeout();
+      clearLiveAnswerResumeTimeout();
     };
   }, []);
 
@@ -590,11 +630,36 @@ export const ClientApp: React.FC = () => {
     if (!promptModal) {
       return;
     }
+    const gateId = promptModal.id;
     setAnsweredGateIds((previous) => (
-      previous.includes(promptModal.id) ? previous : [...previous, promptModal.id]
+      previous.includes(gateId) ? previous : [...previous, gateId]
     ));
     setPromptModal(null);
     setBotTtsTranscript(`Noted: ${answer}`);
+
+    const action = getPromptAnswerAction(gateId, answer);
+    if (action === "show_trial_cta") {
+      const trialVisual = imagesRef.current.find((image) => image.id === "trial-stay");
+      if (trialVisual) {
+        setVisual((previous) => ({ ...trialVisual, videoUrl: previous.videoUrl }));
+      }
+      setIsNarratorPaused(true);
+      return;
+    }
+    if (action === "open_updates") {
+      setIsNarratorPaused(true);
+      openSubscribeFlow();
+      return;
+    }
+    if (action === "replay_membership") {
+      setCurrentChunkId("membership_structure");
+      return;
+    }
+    if (action === "soft_close") {
+      setCurrentChunkId("decision_close");
+      return;
+    }
+
     playNextChunk();
   }
 
@@ -640,24 +705,40 @@ export const ClientApp: React.FC = () => {
       const next = { ...previous, [question.id]: answer };
       const nextStep = (subscribeStep ?? 1) + 1;
       if (nextStep > SUBSCRIBE_QUESTIONS.length) {
-        window.localStorage.setItem(SUBSCRIBE_LEAD_STORAGE_KEY, JSON.stringify({
-          ...next,
-          capturedAt: new Date().toISOString(),
-        }));
-        const url = new URL(FOUNDING_SILENCE_URL);
-        url.searchParams.set("name", next.name);
-        url.searchParams.set("email", next.email);
-        url.searchParams.set("phone", next.phone);
-        url.searchParams.set("interest", next.interest);
-        url.searchParams.set("timing", next.timing);
-        url.searchParams.set("first_update", next.firstUpdate);
-        window.open(url.toString(), "_blank", "noreferrer");
-        setSubscribeStep(null);
+        void submitSubscribeLead(next);
       } else {
         setSubscribeStep(nextStep);
       }
       return next;
     });
+  }
+
+  async function submitSubscribeLead(lead: SubscribeForm) {
+    setSubscribeError("");
+    try {
+      const response = await fetch("/api/subscribe-lead", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(lead),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({} as Record<string, unknown>));
+        throw new Error(String(data.error || "Could not save this update request."));
+      }
+      window.localStorage.setItem(SUBSCRIBE_LEAD_STORAGE_KEY, JSON.stringify({
+        ...lead,
+        capturedAt: new Date().toISOString(),
+      }));
+      const url = new URL(FOUNDING_SILENCE_URL);
+      url.searchParams.set("source", "beforest_live_guide");
+      url.searchParams.set("interest", lead.interest);
+      url.searchParams.set("timing", lead.timing);
+      url.searchParams.set("first_update", lead.firstUpdate);
+      window.open(url.toString(), "_blank", "noreferrer");
+      setSubscribeStep(null);
+    } catch (error) {
+      setSubscribeError(error instanceof Error ? error.message : "Could not save this update request.");
+    }
   }
 
   function goBackSubscribeStep() {
@@ -822,13 +903,41 @@ export const ClientApp: React.FC = () => {
     }
   }
 
+  function closeLiveSession() {
+    void sessionRef.current?.close?.();
+    sessionRef.current = null;
+    liveConnectPromiseRef.current = null;
+    liveSocketOpenRef.current = false;
+  }
+
   function closeLiveSessionSoon() {
-    window.setTimeout(() => {
-      void sessionRef.current?.close?.();
-      sessionRef.current = null;
-      liveConnectPromiseRef.current = null;
-      liveSocketOpenRef.current = false;
-    }, 120);
+    window.setTimeout(closeLiveSession, 120);
+  }
+
+  function recoverFromLiveFailure(message = "Gemini Live is temporarily unavailable. Returning to the walkthrough.") {
+    stopRecorder();
+    stopLivePlayback();
+    stopLocalSpeechPreview();
+    clearAnswerTimeout();
+    clearLiveAnswerResumeTimeout();
+    closeLiveSession();
+    liveQuestionActiveRef.current = false;
+    setLivePhase("unavailable");
+    setUiError(message);
+    window.setTimeout(resumeNarratorAfterLive, 180);
+  }
+
+  function returnToWalkthrough() {
+    stopRecorder();
+    stopLivePlayback();
+    stopLocalSpeechPreview();
+    clearAnswerTimeout();
+    clearLiveAnswerResumeTimeout();
+    closeLiveSession();
+    liveQuestionActiveRef.current = false;
+    setLivePhase("idle");
+    setUiError(null);
+    resumeNarratorAfterLive();
   }
 
   function scheduleNarratorResumeAfterAnswer(delayMs = 650) {
@@ -856,10 +965,7 @@ export const ClientApp: React.FC = () => {
       }
       const question = userTranscriptRef.current.trim();
       if (!question) {
-        setUiError("I could not catch the question clearly. Please tap the mic and ask once more.");
-        setLivePhase("idle");
-        resumeNarratorAfterLive();
-        closeLiveSessionSoon();
+        recoverFromLiveFailure("I could not catch the question clearly. Returning to the walkthrough.");
         return;
       }
       try {
@@ -878,9 +984,7 @@ export const ClientApp: React.FC = () => {
           turnComplete: true,
         });
       } catch {
-        setUiError("Gemini Live did not answer this question. Please try once more.");
-        setLivePhase("unavailable");
-        resumeNarratorAfterLive();
+        recoverFromLiveFailure("Gemini Live did not answer this question. Returning to the walkthrough.");
       }
     }, 5500);
   }
@@ -998,18 +1102,7 @@ export const ClientApp: React.FC = () => {
             void handleLiveMessage(message);
           },
           onerror: (event: ErrorEvent) => {
-            liveSocketOpenRef.current = false;
-            sessionRef.current = null;
-            liveConnectPromiseRef.current = null;
-            setLivePhase("unavailable");
-            setUiError(event.message || "Gemini Live connection failed.");
-            stopRecorder();
-            stopLivePlayback();
-            clearAnswerTimeout();
-            clearLiveAnswerResumeTimeout();
-            if (!liveQuestionActiveRef.current) {
-              window.setTimeout(resumeNarratorAfterLive, 300);
-            }
+            recoverFromLiveFailure(getLiveConnectionError(event));
           },
           onclose: () => {
             liveSocketOpenRef.current = false;
@@ -1133,8 +1226,7 @@ export const ClientApp: React.FC = () => {
               audio: pcmBytesToLiveAudio(new Uint8Array(event.data.pcm), context.sampleRate),
             });
           } catch {
-            stopRecorder();
-            setLivePhase("unavailable");
+            recoverFromLiveFailure("The live mic connection dropped. Returning to the walkthrough.");
           }
         };
         recorderRef.current.worklet = worklet;
@@ -1164,8 +1256,7 @@ export const ClientApp: React.FC = () => {
               audio: pcmBytesToLiveAudio(new Uint8Array(pcm16.buffer), context.sampleRate),
             });
           } catch {
-            stopRecorder();
-            setLivePhase("unavailable");
+            recoverFromLiveFailure("The live mic connection dropped. Returning to the walkthrough.");
           }
         };
         recorderRef.current.processor = processor;
@@ -1177,20 +1268,9 @@ export const ClientApp: React.FC = () => {
       setLivePhase("listening");
       startLocalSpeechPreview();
     } catch (error) {
-      setLivePhase("unavailable");
-      setUiError(getLiveConnectionError(error));
       openedStreams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
-      stopRecorder();
-      clearAnswerTimeout();
-      clearLiveAnswerResumeTimeout();
-      liveQuestionActiveRef.current = false;
-      stopLocalSpeechPreview();
       void pendingSessionPromise?.then((session) => session.close()).catch(() => undefined);
-      void sessionRef.current?.close?.();
-      sessionRef.current = null;
-      liveConnectPromiseRef.current = null;
-      liveSocketOpenRef.current = false;
-      window.setTimeout(resumeNarratorAfterLive, 300);
+      recoverFromLiveFailure(getLiveConnectionError(error));
     }
   }
 
@@ -1242,15 +1322,17 @@ export const ClientApp: React.FC = () => {
       sessionRef.current?.sendRealtimeInput({ activityEnd: {} });
       scheduleAnswerFallback();
     } else {
-      setUiError("The live mic closed before the question could be sent. Please try again.");
-      setLivePhase("unavailable");
-      resumeNarratorAfterLive();
+      recoverFromLiveFailure("The live mic closed before the question could be sent. Returning to the walkthrough.");
     }
   }
 
   function handlePrimaryAction() {
     if (!isPresentationStarted) {
       void handleStartPresentation();
+      return;
+    }
+    if (livePhase === "answering") {
+      returnToWalkthrough();
       return;
     }
     if (isMicOpen) {
@@ -1262,6 +1344,8 @@ export const ClientApp: React.FC = () => {
 
   const actionLabel = isPreparing || livePhase === "connecting"
     ? "Opening"
+    : livePhase === "answering"
+      ? "Return to walkthrough"
     : !isPresentationStarted
       ? "Begin walkthrough"
       : isMicOpen
@@ -1405,6 +1489,8 @@ export const ClientApp: React.FC = () => {
                   <span className="beforest-mic-button__surface">
                     {isPreparing || livePhase === "connecting" ? (
                       <LoaderCircle size={24} className="spin" />
+                    ) : livePhase === "answering" ? (
+                      <Play size={24} />
                     ) : !isPresentationStarted ? (
                       <Play size={24} />
                     ) : isMicOpen ? (

@@ -18,6 +18,13 @@ export type NarrationGate = {
   options: string[];
 };
 
+export type PromptAnswerAction =
+  | "continue"
+  | "show_trial_cta"
+  | "open_updates"
+  | "replay_membership"
+  | "soft_close";
+
 export type NarrationChunk = {
   id: NarrationChunkId;
   sectionId: PresentationSectionId;
@@ -38,7 +45,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "1 / Beforest",
     visualId: "opening-forest-road",
     audioUrl: "/audio/narration/01-opening-definition.wav",
-    durationSeconds: 52,
+    durationSeconds: 28.211,
     resumeMode: "restart_chunk",
     returnLine: "Let's get back now.",
     nextChunkId: "access_without_ownership",
@@ -51,7 +58,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "2 / The complete ecosystem",
     visualId: "structure-clarity",
     audioUrl: "/audio/narration/02-access-without-ownership.wav",
-    durationSeconds: 62,
+    durationSeconds: 25.291,
     resumeMode: "restart_chunk",
     returnLine: "Let's come back to the structure.",
     nextChunkId: "why_ten_percent",
@@ -64,7 +71,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "3 / Why 10% works",
     visualId: "protected-time-canopy",
     audioUrl: "/audio/narration/03-why-ten-percent.wav",
-    durationSeconds: 37,
+    durationSeconds: 23.331,
     resumeMode: "restart_chunk",
     returnLine: "Let's return to why the rhythm matters.",
     nextChunkId: "what_it_feels_like",
@@ -77,7 +84,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "4 / What it feels like",
     visualId: "collective-landscape",
     audioUrl: "/audio/narration/04-what-it-feels-like.wav",
-    durationSeconds: 38,
+    durationSeconds: 23.051,
     resumeMode: "restart_chunk",
     returnLine: "Let's step back into the place.",
     nextChunkId: "proof_and_limit",
@@ -90,7 +97,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "5 / Proof and limit",
     visualId: "proof-restoration",
     audioUrl: "/audio/narration/05-proof-and-limit.wav",
-    durationSeconds: 39,
+    durationSeconds: 23.491,
     resumeMode: "restart_chunk",
     returnLine: "Let's return to the proof.",
     nextChunkId: "membership_structure",
@@ -103,7 +110,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "6 / The structure",
     visualId: "structure-clarity",
     audioUrl: "/audio/narration/06-membership-structure.wav",
-    durationSeconds: 34,
+    durationSeconds: 23.251,
     resumeMode: "restart_chunk",
     returnLine: "Let's get back to the membership.",
     nextChunkId: "blyton_first",
@@ -116,7 +123,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "7 / Blyton first",
     visualId: "trial-stay",
     audioUrl: "/audio/narration/07-blyton-first.wav",
-    durationSeconds: 37,
+    durationSeconds: 23.091,
     resumeMode: "restart_chunk",
     returnLine: "Let's return to the first real step.",
     nextChunkId: "decision_close",
@@ -129,7 +136,7 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
     stageLabel: "8 / The first step",
     visualId: "art-of-return-hero",
     audioUrl: "/audio/narration/08-decision-close.wav",
-    durationSeconds: 31,
+    durationSeconds: 24.411,
     resumeMode: "next_chunk",
     returnLine: "Let's close this properly.",
     transcript:
@@ -187,6 +194,27 @@ export function getNextNarrationChunk(chunkId: NarrationChunkId) {
 
 export function getGateAfterChunk(chunkId: NarrationChunkId) {
   return NARRATION_GATES.find((gate) => gate.afterChunkId === chunkId);
+}
+
+export function getPromptAnswerAction(gateId: string, answer: string): PromptAnswerAction {
+  if (gateId !== "next-step") {
+    return "continue";
+  }
+
+  const normalized = answer.trim().toLowerCase();
+  if (normalized.includes("trial")) {
+    return "show_trial_cta";
+  }
+  if (normalized.includes("updates")) {
+    return "open_updates";
+  }
+  if (normalized.includes("membership")) {
+    return "replay_membership";
+  }
+  if (normalized.includes("not right") || normalized.includes("skip")) {
+    return "soft_close";
+  }
+  return "continue";
 }
 
 export function buildTranscriptWindow(transcript: string, elapsedSeconds: number, durationSeconds: number, leadSeconds = 1.8) {

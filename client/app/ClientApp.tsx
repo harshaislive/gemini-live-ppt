@@ -32,7 +32,6 @@ import {
   bytesToBase64,
   extractAudioPayloadFromMessage,
   mergeRollingWords,
-  takeLastWords,
 } from "@/lib/gemini-live-utils";
 
 type AccessState = {
@@ -265,7 +264,7 @@ export const ClientApp: React.FC = () => {
   const [visual, setVisual] = useState<BeforestVisual>(INITIAL_VISUAL);
   const [livePhase, setLivePhase] = useState<LivePhase>("idle");
   const [isMicOpen, setIsMicOpen] = useState(false);
-  const [isUserSpeaking, setIsUserSpeaking] = useState(false);
+  const [, setIsUserSpeaking] = useState(false);
   const [isBotSpeaking, setIsBotSpeaking] = useState(false);
   const [userTranscript, setUserTranscript] = useState("");
   const [botTtsTranscript, setBotTtsTranscript] = useState("");
@@ -285,6 +284,7 @@ export const ClientApp: React.FC = () => {
   const [uiError, setUiError] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const faqAudioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sessionRef = useRef<Session | null>(null);
   const liveConnectPromiseRef = useRef<Promise<Session> | null>(null);
@@ -320,6 +320,7 @@ export const ClientApp: React.FC = () => {
     && livePhase !== "connecting";
 
   const guideStage = isPresentationStarted ? currentChunk.stageLabel : "Beforest 10% Life";
+  const hasCapturedQuestion = Boolean(userTranscript.trim());
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
       return "Preparing the presentation...";
@@ -330,9 +331,9 @@ export const ClientApp: React.FC = () => {
         : "Enter your name to open the presentation.";
     }
     if (isMicOpen) {
-      return isUserSpeaking
-        ? takeLastWords(userTranscript.trim(), 12) || "Listening..."
-        : "Speak, then tap again to close the question.";
+      return hasCapturedQuestion
+        ? "Question captured. Tap send when complete."
+        : "Speak, then tap send when complete.";
     }
     if (livePhase === "answering") {
       return botTtsTranscript || "Answering your question, then we return to the narrator.";
@@ -348,14 +349,13 @@ export const ClientApp: React.FC = () => {
     accessState,
     botTtsTranscript,
     currentChunk,
+    hasCapturedQuestion,
     isMicOpen,
     isPresentationStarted,
-    isUserSpeaking,
     livePhase,
     narratorElapsedSeconds,
     narratorSubtitle,
     shouldShowAccessForm,
-    userTranscript,
   ]);
 
   const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
@@ -702,28 +702,28 @@ export const ClientApp: React.FC = () => {
   }
 
   function stopFaqReading() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setIsFaqReading(false);
-      return;
+    const faqAudio = faqAudioRef.current;
+    if (faqAudio) {
+      faqAudio.pause();
+      faqAudio.currentTime = 0;
     }
-    window.speechSynthesis.cancel();
     setIsFaqReading(false);
   }
 
   function playFaqAnswer(faq: PreparedFaq) {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-      setUiError("This browser cannot read the FAQ aloud. You can still read the answer here.");
+    const faqAudio = faqAudioRef.current;
+    if (!faqAudio) {
+      setUiError("FAQ audio is not ready yet. You can still read the answer here.");
       return;
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(`${faq.question}. ${faq.answer}`);
-    utterance.lang = "en-IN";
-    utterance.rate = 0.92;
-    utterance.pitch = 0.92;
-    utterance.onend = () => setIsFaqReading(false);
-    utterance.onerror = () => setIsFaqReading(false);
+    faqAudio.pause();
+    faqAudio.src = faq.audioUrl;
+    faqAudio.currentTime = 0;
     setIsFaqReading(true);
-    window.speechSynthesis.speak(utterance);
+    void faqAudio.play().catch(() => {
+      setIsFaqReading(false);
+      setUiError("FAQ audio could not play in this browser session. You can still read the answer here.");
+    });
   }
 
   function updateSubscribeField<Key extends keyof SubscribeForm>(field: Key, value: SubscribeForm[Key]) {
@@ -1401,18 +1401,24 @@ export const ClientApp: React.FC = () => {
         : "Ask a question";
   const micHint = isPresentationStarted
     ? isMicOpen
-      ? "Speak now. Tap send when your question is complete."
+      ? hasCapturedQuestion
+        ? "Question captured. Tap send when complete."
+        : "Speak now. Tap send when your question is complete."
       : "Tap the mic to pause the narrator and ask one question."
     : "The presentation starts from committed audio, so there is no live wait at the beginning.";
 
   const livePanelTitle = livePhase === "answering" || liveAnswerText
     ? "Response"
     : isMicOpen
-      ? "Speak now"
+      ? hasCapturedQuestion
+        ? "Question captured"
+        : "Speak now"
       : "Preparing mic";
   const livePanelText = livePhase === "answering" || liveAnswerText
     ? liveAnswerText || botTtsTranscript || "Answering now..."
-    : userTranscript.trim() || "Ask your question naturally. When you are done, tap the send icon so the guide can answer and return to the walkthrough.";
+    : hasCapturedQuestion
+      ? "Tap send when your question is complete. The guide will answer briefly and return to the walkthrough."
+      : "Ask your question naturally. When you are done, tap the send icon so the guide can answer and return to the walkthrough.";
 
   function renderSubtitle(text: string) {
     return text;
@@ -1435,6 +1441,12 @@ export const ClientApp: React.FC = () => {
         preload="auto"
         onTimeUpdate={handleNarratorTimeUpdate}
         onEnded={handleNarratorEnded}
+      />
+      <audio
+        ref={faqAudioRef}
+        preload="metadata"
+        onEnded={() => setIsFaqReading(false)}
+        onPause={() => setIsFaqReading(false)}
       />
 
       <section
@@ -1763,17 +1775,23 @@ export const ClientApp: React.FC = () => {
                     ))}
                   </div>
                   <article className="beforest-faq-answer">
-                    <h3>{activeFaq.question}</h3>
+                    <div className="beforest-faq-answer__header">
+                      <span>Selected question</span>
+                      <h3>{activeFaq.question}</h3>
+                    </div>
                     <div className="beforest-faq-answer__scroll">
                       <p>{activeFaq.answer}</p>
                     </div>
-                    <button
-                      type="button"
-                      className="beforest-faq-play"
-                      onClick={() => isFaqReading ? stopFaqReading() : playFaqAnswer(activeFaq)}
-                    >
-                      {isFaqReading ? "Stop reading" : "Play answer"}
-                    </button>
+                    <div className="beforest-faq-answer__footer">
+                      <button
+                        type="button"
+                        className="beforest-faq-play"
+                        onClick={() => isFaqReading ? stopFaqReading() : playFaqAnswer(activeFaq)}
+                      >
+                        {isFaqReading ? "Stop audio" : "Play answer"}
+                      </button>
+                      <span>{isFaqReading ? "Narrator audio playing" : "Same voice as walkthrough"}</span>
+                    </div>
                   </article>
                 </div>
               </section>

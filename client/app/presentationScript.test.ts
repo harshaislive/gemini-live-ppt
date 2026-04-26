@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { NARRATION_CHUNKS, PREPARED_FAQS, getPromptAnswerAction } from "./presentationScript";
+import {
+  NARRATION_CHUNKS,
+  PREPARED_FAQS,
+  buildTranscriptWindow,
+  getPromptAnswerAction,
+} from "./presentationScript";
 
 function readWavDurationSeconds(audioUrl: string) {
   const audioPath = path.join(process.cwd(), "public", audioUrl);
@@ -18,6 +23,23 @@ describe("narration audio metadata", () => {
     for (const chunk of NARRATION_CHUNKS) {
       const actualDuration = readWavDurationSeconds(chunk.audioUrl);
       expect(Math.abs(chunk.durationSeconds - actualDuration), chunk.id).toBeLessThanOrEqual(0.25);
+    }
+  });
+});
+
+describe("subtitle cue timing", () => {
+  it("keeps visible captions short like spoken video captions", () => {
+    for (const chunk of NARRATION_CHUNKS) {
+      const cue = buildTranscriptWindow(chunk.transcript, chunk.durationSeconds / 2, chunk.durationSeconds);
+      expect(cue.split(/\s+/).filter(Boolean).length, chunk.id).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it("reaches the final words near the end of each audio chunk", () => {
+    for (const chunk of NARRATION_CHUNKS) {
+      const cue = buildTranscriptWindow(chunk.transcript, chunk.durationSeconds - 0.05, chunk.durationSeconds);
+      const finalWord = chunk.transcript.split(/\s+/).filter(Boolean).at(-1);
+      expect(cue, chunk.id).toContain(finalWord);
     }
   });
 });
@@ -41,5 +63,12 @@ describe("prepared FAQs", () => {
     expect(PREPARED_FAQS.length).toBeGreaterThanOrEqual(4);
     expect(PREPARED_FAQS.some((faq) => /person-nights/i.test(`${faq.question} ${faq.answer}`))).toBe(true);
     expect(PREPARED_FAQS.every((faq) => faq.question && faq.answer)).toBe(true);
+  });
+
+  it("uses generated FAQ audio files instead of browser speech", () => {
+    for (const faq of PREPARED_FAQS) {
+      expect(faq.audioUrl, faq.id).toMatch(/^\/audio\/faq\/.+\.wav$/);
+      expect(readWavDurationSeconds(faq.audioUrl), faq.id).toBeGreaterThan(3);
+    }
   });
 });

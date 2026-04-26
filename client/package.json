@@ -8,7 +8,8 @@
     "start": "sh -c 'next start -H 0.0.0.0 -p \"${PORT:-3000}\"'",
     "lint": "eslint",
     "test": "vitest run",
-    "generate:narration": "tsx scripts/generate-narration.ts"
+    "generate:narration": "tsx scripts/generate-narration.ts",
+    "generate:faq-audio": "tsx scripts/generate-faq-audio.ts"
   },
   "dependencies": {
     "@google/genai": "^1.50.1",

@@ -92,14 +92,14 @@ describe("presentation agenda routing", () => {
         targetSegmentId: "membership_to_trial",
         confidence: 0.72,
         strategy: "compress",
-        presenterBrief: "They care about the 30-night structure, so explain it quickly.",
+        presenterBrief: "They care about the 30 person-nights structure, so explain it quickly.",
         reason: "The listener selected clarity on 30 person-nights.",
       },
     });
 
     expect(decision.targetSegmentId).toBe("membership_to_trial");
     expect(decision.confidence).toBe(0.72);
-    expect(decision.presenterBrief).toContain("30-night");
+    expect(decision.presenterBrief).toContain("30 person-nights");
   });
 
   it("keeps final decision segment stable when there is no downstream edge", () => {

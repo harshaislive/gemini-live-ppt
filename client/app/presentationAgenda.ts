@@ -22,20 +22,20 @@ export type PresentationSection = {
 export const PRESENTATION_AGENDA: PresentationSection[] = [
   {
     id: "opening_definition",
-    stageLabel: "1 / Beforest and 10%",
+    stageLabel: "1 / Beforest",
     visualId: "opening-forest-road",
-    goal: "Define Beforest and the 10% Life in the first ten seconds.",
+    goal: "Define Beforest first as the serious restoration and collective ownership system.",
     instruction:
-      "Open immediately with what Beforest is and what the 10% Life is. In the first ten seconds, say Beforest builds restored collectives: landscapes where people can stay, gather, eat, and keep returning. Then say people may come through hospitality, Bewild food, collective experiences, full membership, or 10%. Define 10% as access without full ownership: thirty person-nights a year, for ten years, inside Beforest landscapes. Keep it adult-to-adult, conversational, and under 35 seconds. Do not ask a question yet.",
+      "Open immediately with Beforest, not 10%. Say Beforest is building permanent, regenerating permaculture food forests across India: 1,300 acres and growing. Make clear this is not eco-tourism and not weekend farmhouses; it is landscape-scale restoration backed by community ownership and disciplined execution. Mention soil, water, biodiversity, food, wildlife, and people improving together. Keep it adult-to-adult and conversational. Do not ask a question yet.",
     nextSection: "access_model",
   },
   {
     id: "access_model",
-    stageLabel: "2 / Access without ownership",
+    stageLabel: "2 / The complete ecosystem",
     visualId: "structure-clarity",
-    goal: "Make access without ownership feel clear and differentiated.",
+    goal: "Map the complete Beforest ecosystem, then introduce 10% as the access-without-ownership path.",
     instruction:
-      "Explain that this is not a holiday club, not a second home, and not full property ownership. It is a protected rhythm of return for people who want access to Beforest landscapes without needing to own a collective share. Keep it spare and concrete. Then call ask_listener_question with 2-4 options to learn where the listener is coming from.",
+      "Explain Beforest as one integrated system with five clear functions: beforest.co for land, restoration, and collective ownership; bewild.life for food from the collectives; hospitality.beforest.co for Blyton Bungalow; experiences.beforest.co for limited immersive programs; and 10percent.beforest.co for recurring access without ownership burden. Then define 10% plainly: thirty person-nights a year, for ten years, for people who need regular deep time in regenerating wilderness without buying land, managing staff, or carrying maintenance responsibility. Then call ask_listener_question with 2-4 options to learn where the listener is coming from.",
     modalGoal:
       "Ask what brought them here: collective experiences, hospitality stays, Bewild food, access without ownership, clarity on 30 person-nights, or Blyton first.",
     nextSection: "desire_scene",

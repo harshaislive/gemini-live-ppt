@@ -88,6 +88,32 @@ type SubscribeQuestion = {
   options: string[];
 };
 
+type BrowserSpeechRecognitionEvent = Event & {
+  resultIndex: number;
+  results: {
+    length: number;
+    [index: number]: {
+      isFinal: boolean;
+      [index: number]: {
+        transcript: string;
+      };
+    };
+  };
+};
+
+type BrowserSpeechRecognition = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
+
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
 const SUBSCRIBE_LEAD_STORAGE_KEY = "beforest_updates_lead";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
@@ -159,6 +185,14 @@ function getMicrophoneRuntimeError(error: unknown) {
   }
 
   return message || "Microphone could not be opened in this browser session.";
+}
+
+function getBrowserSpeechRecognitionConstructor() {
+  const speechWindow = window as Window & {
+    SpeechRecognition?: BrowserSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
 }
 
 function float32ToPcm16(input: Float32Array) {
@@ -242,6 +276,8 @@ export const ClientApp: React.FC = () => {
   const liveSocketOpenRef = useRef(false);
   const liveQuestionActiveRef = useRef(false);
   const recorderRef = useRef<RecorderState | null>(null);
+  const localSpeechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const localSpeechFinalRef = useRef("");
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const activeLiveSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextLivePlaybackTimeRef = useRef(0);
@@ -324,6 +360,7 @@ export const ClientApp: React.FC = () => {
       .catch(() => setAccessState({ requiresPasscode: true, authorized: false }));
 
     return () => {
+      stopLocalSpeechPreview();
       stopRecorder();
       stopLivePlayback();
       void sessionRef.current?.close?.();
@@ -712,6 +749,65 @@ export const ClientApp: React.FC = () => {
     setIsBotSpeaking(false);
   }
 
+  function startLocalSpeechPreview() {
+    const SpeechRecognition = getBrowserSpeechRecognitionConstructor();
+    if (!SpeechRecognition) {
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-IN";
+      recognition.onresult = (event) => {
+        let interim = "";
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const transcript = event.results[index]?.[0]?.transcript?.trim();
+          if (!transcript) {
+            continue;
+          }
+          if (event.results[index].isFinal) {
+            localSpeechFinalRef.current = `${localSpeechFinalRef.current} ${transcript}`.trim();
+          } else {
+            interim = `${interim} ${transcript}`.trim();
+          }
+        }
+        const preview = `${localSpeechFinalRef.current} ${interim}`.trim();
+        if (preview) {
+          userTranscriptRef.current = preview;
+          setUserTranscript(preview);
+        }
+      };
+      recognition.onerror = () => undefined;
+      recognition.onend = () => {
+        if (localSpeechRecognitionRef.current === recognition) {
+          localSpeechRecognitionRef.current = null;
+        }
+      };
+      recognition.start();
+      localSpeechRecognitionRef.current = recognition;
+    } catch {
+      localSpeechRecognitionRef.current = null;
+    }
+  }
+
+  function stopLocalSpeechPreview() {
+    const recognition = localSpeechRecognitionRef.current;
+    localSpeechRecognitionRef.current = null;
+    if (!recognition) {
+      return;
+    }
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    try {
+      recognition.stop();
+    } catch {
+      // Browser speech recognition may already be stopped.
+    }
+  }
+
   function clearAnswerTimeout() {
     if (answerTimeoutRef.current) {
       window.clearTimeout(answerTimeoutRef.current);
@@ -988,6 +1084,7 @@ export const ClientApp: React.FC = () => {
     setUiError(null);
     setUserTranscript("");
     userTranscriptRef.current = "";
+    localSpeechFinalRef.current = "";
     pendingBotTranscriptRef.current = "";
     fullBotTranscriptRef.current = "";
     setBotTtsTranscript("");
@@ -1078,6 +1175,7 @@ export const ClientApp: React.FC = () => {
 
       setIsMicOpen(true);
       setLivePhase("listening");
+      startLocalSpeechPreview();
     } catch (error) {
       setLivePhase("unavailable");
       setUiError(getLiveConnectionError(error));
@@ -1086,6 +1184,7 @@ export const ClientApp: React.FC = () => {
       clearAnswerTimeout();
       clearLiveAnswerResumeTimeout();
       liveQuestionActiveRef.current = false;
+      stopLocalSpeechPreview();
       void pendingSessionPromise?.then((session) => session.close()).catch(() => undefined);
       void sessionRef.current?.close?.();
       sessionRef.current = null;
@@ -1104,6 +1203,7 @@ export const ClientApp: React.FC = () => {
       return;
     }
     try {
+      stopLocalSpeechPreview();
       recorder.worklet?.disconnect();
       recorder.worklet?.port.close();
       recorder.processor?.disconnect();
@@ -1316,7 +1416,7 @@ export const ClientApp: React.FC = () => {
                   <span className="beforest-action-label">{actionLabel}</span>
                 </button>
 
-                {isPresentationStarted ? (
+                {isPresentationStarted && !isLiveFocus ? (
                   <button
                     type="button"
                     className="beforest-secondary-action"

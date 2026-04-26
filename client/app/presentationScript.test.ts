@@ -27,6 +27,25 @@ describe("narration audio metadata", () => {
   });
 });
 
+describe("narration brand wording", () => {
+  it("keeps visible subtitles spelled as Bewild while allowing TTS pronunciation hints", () => {
+    const visibleScript = NARRATION_CHUNKS.map((chunk) => chunk.transcript).join(" ");
+    const speechScript = NARRATION_CHUNKS.map((chunk) => chunk.speechTranscript || "").join(" ");
+
+    expect(visibleScript).toContain("Bewild");
+    expect(visibleScript).not.toContain("Be Wild");
+    expect(speechScript).toContain("Be Wild");
+  });
+
+  it("frames food as landscape-supported, not universal production", () => {
+    const visibleScript = NARRATION_CHUNKS.map((chunk) => chunk.transcript).join(" ");
+
+    expect(visibleScript).toContain("Where the land naturally supports food forests");
+    expect(visibleScript).toContain("where the landscape naturally supports it");
+    expect(visibleScript).not.toContain("growing food through Bewild");
+  });
+});
+
 describe("subtitle cue timing", () => {
   it("keeps visible captions short like spoken video captions", () => {
     for (const chunk of NARRATION_CHUNKS) {

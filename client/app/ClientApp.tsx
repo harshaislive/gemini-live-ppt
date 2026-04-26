@@ -66,6 +66,13 @@ type RecorderState = {
   hasSpeech: boolean;
 };
 
+type AmbientState = {
+  context: AudioContext;
+  masterGain: GainNode;
+  source: AudioBufferSourceNode;
+  chirpTimeout: number | null;
+};
+
 type PromptModal = {
   id: string;
   question: string;
@@ -127,6 +134,8 @@ const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 const CONTINUOUS_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
 const SUBTITLE_LEAD_SECONDS = 0.3;
+const AMBIENT_GAIN = 0.024;
+const AMBIENT_DUCKED_GAIN = 0.006;
 const LIVE_CONNECT_RETRY_DELAYS_MS = [650, 1400];
 const SUBSCRIBE_QUESTIONS: SubscribeQuestion[] = [
   {
@@ -294,6 +303,7 @@ export const ClientApp: React.FC = () => {
   const localSpeechRecognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const localSpeechFinalRef = useRef("");
   const outputAudioContextRef = useRef<AudioContext | null>(null);
+  const ambientRef = useRef<AmbientState | null>(null);
   const activeLiveSourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const nextLivePlaybackTimeRef = useRef(0);
   const answerTimeoutRef = useRef<number | null>(null);
@@ -369,6 +379,7 @@ export const ClientApp: React.FC = () => {
   const activeFaq = activeFaqId
     ? PREPARED_FAQS.find((faq) => faq.id === activeFaqId) || PREPARED_FAQS[0]
     : null;
+  const shouldDuckAmbient = isLiveFocus || Boolean(activeFaq) || subscribeStep !== null;
 
   useEffect(() => {
     const activeLiveSources = activeLiveSourcesRef.current;
@@ -384,6 +395,7 @@ export const ClientApp: React.FC = () => {
 
     return () => {
       stopFaqReading();
+      stopAmbientBed();
       stopLocalSpeechPreview();
       const recorder = recorderRef.current;
       recorderRef.current = null;
@@ -420,6 +432,14 @@ export const ClientApp: React.FC = () => {
       clearLiveAnswerResumeTimeout();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isPresentationStarted) {
+      setAmbientGain(0);
+      return;
+    }
+    setAmbientGain(shouldDuckAmbient ? AMBIENT_DUCKED_GAIN : AMBIENT_GAIN);
+  }, [isPresentationStarted, shouldDuckAmbient]);
 
   useEffect(() => {
     const sectionVisual = imagesRef.current.find((image) => image.id === currentChunk.visualId);
@@ -569,6 +589,7 @@ export const ClientApp: React.FC = () => {
     setUiError(null);
     try {
       await ensurePresentationContext();
+      await startAmbientBed();
       setCompletedChunkIds([]);
       setAnsweredGateIds([]);
       setCurrentChunkId(NARRATION_CHUNKS[0].id);
@@ -843,6 +864,127 @@ export const ClientApp: React.FC = () => {
     fullBotTranscriptRef.current = "";
     setIsNarratorPaused(false);
     void audio.play().catch(() => setIsNarratorPaused(true));
+  }
+
+  async function startAmbientBed() {
+    if (ambientRef.current) {
+      await ambientRef.current.context.resume().catch(() => undefined);
+      setAmbientGain(AMBIENT_GAIN);
+      return;
+    }
+
+    const context = new AudioContext({ sampleRate: 24000 });
+    if (context.state === "suspended") {
+      await context.resume();
+    }
+
+    const masterGain = context.createGain();
+    masterGain.gain.value = 0;
+    masterGain.connect(context.destination);
+
+    const highpass = context.createBiquadFilter();
+    highpass.type = "highpass";
+    highpass.frequency.value = 130;
+
+    const lowpass = context.createBiquadFilter();
+    lowpass.type = "lowpass";
+    lowpass.frequency.value = 850;
+
+    const streamGain = context.createGain();
+    streamGain.gain.value = 0.72;
+
+    const bufferLength = context.sampleRate * 4;
+    const buffer = context.createBuffer(1, bufferLength, context.sampleRate);
+    const channel = buffer.getChannelData(0);
+    let previous = 0;
+    for (let index = 0; index < bufferLength; index += 1) {
+      const white = Math.random() * 2 - 1;
+      previous = (previous + 0.018 * white) / 1.018;
+      channel[index] = previous * 2.8;
+    }
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(highpass);
+    highpass.connect(lowpass);
+    lowpass.connect(streamGain);
+    streamGain.connect(masterGain);
+    source.start();
+
+    ambientRef.current = {
+      context,
+      masterGain,
+      source,
+      chirpTimeout: null,
+    };
+    scheduleAmbientChirp();
+    setAmbientGain(AMBIENT_GAIN);
+  }
+
+  function setAmbientGain(gain: number) {
+    const ambient = ambientRef.current;
+    if (!ambient) {
+      return;
+    }
+    const now = ambient.context.currentTime;
+    ambient.masterGain.gain.cancelScheduledValues(now);
+    ambient.masterGain.gain.setTargetAtTime(gain, now, 0.8);
+  }
+
+  function scheduleAmbientChirp() {
+    const ambient = ambientRef.current;
+    if (!ambient) {
+      return;
+    }
+    const delay = 5500 + Math.random() * 8500;
+    ambient.chirpTimeout = window.setTimeout(() => {
+      playAmbientChirp();
+      scheduleAmbientChirp();
+    }, delay);
+  }
+
+  function playAmbientChirp() {
+    const ambient = ambientRef.current;
+    if (!ambient || ambient.context.state === "closed") {
+      return;
+    }
+    const now = ambient.context.currentTime;
+    const chirps = Math.random() > 0.55 ? 2 : 1;
+    for (let index = 0; index < chirps; index += 1) {
+      const offset = index * (0.13 + Math.random() * 0.08);
+      const oscillator = ambient.context.createOscillator();
+      const gain = ambient.context.createGain();
+      const start = now + offset;
+      const end = start + 0.09 + Math.random() * 0.07;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(1900 + Math.random() * 1200, start);
+      oscillator.frequency.exponentialRampToValueAtTime(2600 + Math.random() * 1800, end);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.011, start + 0.025);
+      gain.gain.exponentialRampToValueAtTime(0.0001, end);
+      oscillator.connect(gain);
+      gain.connect(ambient.masterGain);
+      oscillator.start(start);
+      oscillator.stop(end + 0.02);
+    }
+  }
+
+  function stopAmbientBed() {
+    const ambient = ambientRef.current;
+    ambientRef.current = null;
+    if (!ambient) {
+      return;
+    }
+    if (ambient.chirpTimeout) {
+      window.clearTimeout(ambient.chirpTimeout);
+    }
+    try {
+      ambient.source.stop();
+    } catch {
+      // Already stopped.
+    }
+    void ambient.context.close();
   }
 
   async function ensureOutputAudioContext() {

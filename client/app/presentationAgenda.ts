@@ -26,7 +26,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "opening-forest-road",
     goal: "Define Beforest first as the serious restoration and collective ownership system.",
     instruction:
-      "Open immediately with Beforest, not 10%. Say Beforest is building permanent, regenerating permaculture food forests across India: 1,300 acres and growing. Make clear this is not eco-tourism and not weekend farmhouses; it is landscape-scale restoration backed by community ownership and disciplined execution. Mention soil, water, biodiversity, food, wildlife, and people improving together. Keep it adult-to-adult and conversational. Do not ask a question yet.",
+      "Open immediately with Beforest, not 10%. Say Beforest is building permanent, regenerating landscapes across India: 1,300 acres and growing, with food forests where the land naturally supports them. Make clear this is not eco-tourism and not weekend farmhouses; it is landscape-scale restoration backed by community ownership and disciplined execution. Mention soil, water, biodiversity, food where appropriate, wildlife, and people improving together. Keep it adult-to-adult and conversational. Do not ask a question yet.",
     nextSection: "access_model",
   },
   {
@@ -35,9 +35,9 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "structure-clarity",
     goal: "Map the complete Beforest ecosystem, then introduce 10% as the access-without-ownership path.",
     instruction:
-      "Explain Beforest as one integrated system with five clear functions: beforest.co for land, restoration, and collective ownership; Be Wild, at bewild.life for food from the collectives; hospitality.beforest.co for Blyton Bungalow; experiences.beforest.co for limited immersive programs; and 10percent.beforest.co for recurring access without ownership burden. Then define 10% plainly: thirty person-nights a year, for ten years, for people who need regular deep time in regenerating wilderness without buying land, managing staff, or carrying maintenance responsibility. Then call ask_listener_question with 2-4 options to learn where the listener is coming from.",
+      "Explain Beforest as one integrated system with five clear functions: beforest.co for land, restoration, and collective ownership; Bewild, pronounced Be Wild, at bewild.life for food that emerges from suitable collectives; hospitality.beforest.co for Blyton Bungalow; experiences.beforest.co for limited immersive programs; and 10percent.beforest.co for recurring access without ownership burden. Then define 10% plainly: thirty person-nights a year, for ten years, for people who need regular deep time in regenerating wilderness without buying land, managing staff, or carrying maintenance responsibility. Then call ask_listener_question with 2-4 options to learn where the listener is coming from.",
     modalGoal:
-      "Ask what brought them here: collective experiences, hospitality stays, Be Wild food, access without ownership, clarity on 30 person-nights, or Blyton first.",
+      "Ask what brought them here: collective experiences, hospitality stays, Bewild food, access without ownership, clarity on 30 person-nights, or Blyton first.",
     nextSection: "desire_scene",
   },
   {
@@ -46,7 +46,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "protected-time-canopy",
     goal: "Use the listener's first choice to select the emotional angle.",
     instruction:
-      "Briefly acknowledge the listener's choice and match the next sentence to where they are coming from. If they came through food, connect Be Wild to the landscapes and farms. If they came through hospitality, connect the stay to repeated return. If they came through collectives, connect membership to belonging. Do not over-explain. Bridge into the lived feeling of the 10% Life as a rhythm with land.",
+      "Briefly acknowledge the listener's choice and match the next sentence to where they are coming from. If they came through food, connect Bewild to the landscapes and farms. If they came through hospitality, connect the stay to repeated return. If they came through collectives, connect membership to belonging. Do not over-explain. Bridge into the lived feeling of the 10% Life as a rhythm with land.",
     nextSection: "desire_scene",
   },
   {
@@ -64,7 +64,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "proof-restoration",
     goal: "Establish trust, seriousness, and scarcity without sounding salesy.",
     instruction:
-      "Ground the promise with approved proof: restored landscapes, six collectives, 1,300 acres, families already in rhythm, hospitality in the collectives, and Be Wild as the food produced from this way of working. Make clear that 10% is limited and serious by design, not built for the masses. Then ask one option-only question about what would decide fit.",
+      "Ground the promise with approved proof: restored landscapes, six collectives, 1,300 acres, families already in rhythm, hospitality in the collectives, and Bewild as food from suitable collectives, where the landscape naturally supports it. Make clear that 10% is limited and serious by design, not built for the masses. Then ask one option-only question about what would decide fit.",
     modalGoal:
       "Ask what would decide whether this is right: the place feeling real, family use, 30 person-nights practicality, or trying Blyton first.",
     nextSection: "membership_clarity",

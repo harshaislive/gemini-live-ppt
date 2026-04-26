@@ -89,7 +89,7 @@ async function main() {
 
   for (const chunk of NARRATION_CHUNKS) {
     const outPath = path.join(OUT_DIR, audioFileName(chunk.audioUrl));
-    const contents = chunk.transcript.replaceAll("%", " percent");
+    const contents = (chunk.speechTranscript || chunk.transcript).replaceAll("%", " percent");
 
     console.log(`Generating ${path.relative(CLIENT_ROOT, outPath)} with ${voiceName}...`);
     const response = await ai.models.generateContent({

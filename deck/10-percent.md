@@ -74,7 +74,7 @@ Never:
 - present it like a travel discount
 
 Always frame it as:
-- 30 nights per year for 10 years
+- 30 person-nights per year for 10 years
 - 300 nights of intentional living
 - a premium, long-horizon commitment
 - a practice of protecting time

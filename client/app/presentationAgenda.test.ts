@@ -93,7 +93,7 @@ describe("presentation agenda routing", () => {
         confidence: 0.72,
         strategy: "compress",
         presenterBrief: "They care about the 30-night structure, so explain it quickly.",
-        reason: "The listener selected clarity on 30 nights.",
+        reason: "The listener selected clarity on 30 person-nights.",
       },
     });
 
@@ -118,7 +118,7 @@ describe("presentation prompts", () => {
   it("injects supervisor routing brief into the next realtime presenter act", () => {
     const prompt = buildSegmentTurnPrompt({
       segment: getPresentationSegment("membership_to_trial"),
-      listenerChoice: "Listener selected: I want to understand 30 nights",
+      listenerChoice: "Listener selected: I want to understand 30 person-nights",
       supervisorBrief: "Clarify structure, then move to Blyton without extra philosophy.",
       completedSections: ["access_model", "proof_limited"],
     });
@@ -127,7 +127,7 @@ describe("presentation prompts", () => {
     expect(prompt).toContain("Current act: membership_to_trial");
     expect(prompt).toContain("Do not stop after the acknowledgement");
     expect(prompt).toContain("Never end after only a brief acknowledgement");
-    expect(prompt).toContain("thirty person-nights");
+    expect(prompt).toContain("thirty person-nights a year");
     expect(prompt).toContain("call ask_listener_question");
   });
 });

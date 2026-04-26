@@ -15,7 +15,7 @@ The 10% Lifestyle membership by Beforest gives access, not ownership. It is fram
 ## Pricing framing
 - Never break pricing into per-night or per-day math.
 - Frame the structure as rhythm and practice, not cost efficiency.
-- The acceptable framing is 30 nights per year for 10 years, or 300 nights of intentional living.
+- The acceptable framing is 30 person-nights per year for 10 years, or 300 person-nights of intentional living.
 - This is a premium offer and should not be described as cheap, affordable, value-oriented, or budget-friendly.
 
 ## Active collectives

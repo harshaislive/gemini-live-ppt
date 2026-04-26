@@ -15,7 +15,7 @@ export const INITIAL_VISUAL: BeforestVisual = {
   title: "The first exhale",
   imageUrl:
     "https://fjnkpphjtlaeijjcbejb.supabase.co/storage/v1/object/public/presentation-images/beforest/PBR_0209.jpg",
-  hook: "Spend 30 nights a year in India’s rewilded landscapes.",
+  hook: "Spend 30 person-nights a year in India's rewilded landscapes.",
   note:
     "1,300 acres being restored across diverse landscapes, including the Western Ghats — shaped by real silence, real wilderness, and return.",
   alt: "A quiet forest road framed by dense greenery and soft light.",

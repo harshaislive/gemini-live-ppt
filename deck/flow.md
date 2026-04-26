@@ -43,7 +43,7 @@ This is the original story-driven structure found in the Beforest source materia
 | # | Arc Stage | Source Slide Title | What it does |
 |---|---|---|---|
 | 1 | Tension | `You've been running at 100%.` | Opens with the exhaustion of urban overcapacity |
-| 2 | Reframe | `What if 90% was enough?` | Introduces 30 nights/year as protection, not subtraction |
+| 2 | Reframe | `What if 90% was enough?` | Introduces 30 person-nights/year as protection, not subtraction |
 | 3 | Proof | `Seven years of quiet work.` | Establishes trust with numbers, land, and stewardship |
 | 4 | Experience | `Rewilded landscapes by Beforest.` | Shows the collectives as places of return and belonging |
 | 5 | Clarity | `300 Nights of Intentional Living.` | Explains the membership structure and rules |
@@ -108,7 +108,7 @@ Function:
 Function:
 - introduce the 10% idea as **recurring protected time**
 - reject the idea of dramatic escape
-- connect 30 nights/year to repeated recovery and trust in place
+- connect 30 person-nights/year to repeated recovery and trust in place
 
 Key idea:
 - this is not a one-off break

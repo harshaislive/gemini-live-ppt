@@ -26,7 +26,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "opening-forest-road",
     goal: "Define Beforest and the 10% Life in the first ten seconds.",
     instruction:
-      "Open immediately with what Beforest is and what the 10% Life is. Say Beforest builds and restores nature-first collectives people can return to. Say the 10% Life is access without ownership: thirty nights a year, roughly ten percent of life, inside Beforest landscapes. Keep this under 35 seconds. Do not ask a question yet.",
+      "Open immediately with what Beforest is and what the 10% Life is. In the first ten seconds, say Beforest builds restored collectives: landscapes where people can stay, gather, eat, and keep returning. Then say people may come through hospitality, Bewild food, collective experiences, full membership, or 10%. Define 10% as access without full ownership: thirty person-nights a year, for ten years, inside Beforest landscapes. Keep it adult-to-adult, conversational, and under 35 seconds. Do not ask a question yet.",
     nextSection: "access_model",
   },
   {
@@ -35,9 +35,9 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "structure-clarity",
     goal: "Make access without ownership feel clear and differentiated.",
     instruction:
-      "Explain that this is not a holiday club, not a second home, and not property ownership. It is a protected rhythm of return for people who want belonging to land without owning it. Keep it spare and concrete. Then call ask_listener_question with 2-4 options to learn why the listener is here.",
+      "Explain that this is not a holiday club, not a second home, and not full property ownership. It is a protected rhythm of return for people who want access to Beforest landscapes without needing to own a collective share. Keep it spare and concrete. Then call ask_listener_question with 2-4 options to learn where the listener is coming from.",
     modalGoal:
-      "Ask what made them stay: access without ownership, need for serious reset, clarity on 30 nights, or Blyton first.",
+      "Ask what brought them here: collective experiences, hospitality stays, Bewild food, access without ownership, clarity on 30 person-nights, or Blyton first.",
     nextSection: "desire_scene",
   },
   {
@@ -46,7 +46,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "protected-time-canopy",
     goal: "Use the listener's first choice to select the emotional angle.",
     instruction:
-      "Briefly acknowledge the listener's choice. Do not over-explain. Bridge into the lived feeling of the 10% Life as a rhythm with land.",
+      "Briefly acknowledge the listener's choice and match the next sentence to where they are coming from. If they came through food, connect Bewild to the landscapes and farms. If they came through hospitality, connect the stay to repeated return. If they came through collectives, connect membership to belonging. Do not over-explain. Bridge into the lived feeling of the 10% Life as a rhythm with land.",
     nextSection: "desire_scene",
   },
   {
@@ -55,7 +55,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "collective-landscape",
     goal: "Translate the video into desire: solitude, coffee, rain, canopy, and protected time.",
     instruction:
-      "Narrate what the viewer is seeing as emotional proof. Speak about walking, coffee, rain, forest air, and silence without sounding like tourism copy. Make the viewer feel that this is a place asking less of them. Keep it under 45 seconds.",
+      "Narrate what the viewer is seeing as practical emotional proof. Speak about walking, food, weather, forest air, hospitality, restored ground, and silence without sounding like tourism copy. Make clear that experiences happen inside the collectives; they are not separate from the land system. Keep it under 45 seconds.",
     nextSection: "proof_limited",
   },
   {
@@ -64,7 +64,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "proof-restoration",
     goal: "Establish trust, seriousness, and scarcity without sounding salesy.",
     instruction:
-      "Ground the promise with approved proof: restored landscapes, six collectives, 1,300 acres, and families already in rhythm. Make clear that 10% is limited and serious by design, not built for the masses. Then ask one option-only question about what would decide fit.",
+      "Ground the promise with approved proof: restored landscapes, six collectives, 1,300 acres, families already in rhythm, hospitality in the collectives, and Bewild as the food produced from this way of working. Make clear that 10% is limited and serious by design, not built for the masses. Then ask one option-only question about what would decide fit.",
     modalGoal:
       "Ask what would decide whether this is right: the place feeling real, family use, 30-night practicality, or trying Blyton first.",
     nextSection: "membership_clarity",
@@ -84,7 +84,7 @@ export const PRESENTATION_AGENDA: PresentationSection[] = [
     visualId: "structure-clarity",
     goal: "Explain the membership structure only after desire and proof.",
     instruction:
-      "Explain the structure in plain language: thirty person-nights a year, for ten years, across Beforest landscapes. It is rhythm, not accumulation. It is access without ownership. Do not break into per-night math.",
+      "Explain the structure in plain language: thirty person-nights a year, for ten years, across Beforest landscapes. It is rhythm, not accumulation. It is access without full ownership for people who do not need to be full collective owners but want recurring access to these landscapes. Do not break into per-night math.",
     nextSection: "trial_stay_close",
   },
   {
@@ -298,6 +298,7 @@ export function buildSegmentTurnPrompt(params: {
     "",
     "Pacing rules:",
     "- Speak as one continuous human presentation act, not separate slides.",
+    "- Sound like an adult talking to another adult: warm, plain, and specific. No stage voice, no brochure copy.",
     "- Do not stop between the listed sections. Bridge naturally from one idea to the next.",
     `- ${responseModeLine}`,
     "- Use show_curated_image only at natural visual shifts, and do not mention the tool.",
@@ -335,6 +336,7 @@ export function buildSectionTurnPrompt(params: {
     "",
     "Rules:",
     "- Speak as the presenter inside the guided screening.",
+    "- Sound like an adult talking to another adult: warm, plain, and specific. No stage voice, no brochure copy.",
     "- Keep this section concise. Do not recap the whole agenda.",
     "- Use the current visual as emotional context.",
     "- If you call a modal, stop speaking and wait for the listener choice.",

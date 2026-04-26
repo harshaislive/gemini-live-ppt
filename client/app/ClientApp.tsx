@@ -96,7 +96,7 @@ const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
-const CONTINUOUS_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-1080.mp4";
+const CONTINUOUS_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
 const SUBTITLE_LEAD_SECONDS = 1.8;
 const SUBSCRIBE_QUESTIONS: SubscribeQuestion[] = [
@@ -225,7 +225,9 @@ export const ClientApp: React.FC = () => {
   const nextLivePlaybackTimeRef = useRef(0);
   const answerTimeoutRef = useRef<number | null>(null);
   const liveAnswerResumeTimeoutRef = useRef<number | null>(null);
-  const preloadedNarrationAudioRef = useRef<HTMLAudioElement[]>([]);
+  const preloadedNarrationAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastNarratorSubtitleRef = useRef("");
+  const lastNarratorElapsedBucketRef = useRef(-1);
   const pendingBotTranscriptRef = useRef("");
   const fullBotTranscriptRef = useRef("");
   const userTranscriptRef = useRef("");
@@ -328,13 +330,25 @@ export const ClientApp: React.FC = () => {
   }, [isPresentationStarted]);
 
   useEffect(() => {
-    preloadedNarrationAudioRef.current = NARRATION_CHUNKS.map((chunk) => {
-      const audio = new Audio(chunk.audioUrl);
-      audio.preload = "auto";
+    const nextChunk = getNextNarrationChunk(currentChunk.id);
+    if (!nextChunk) {
+      preloadedNarrationAudioRef.current = null;
+      return;
+    }
+
+    const audio = new Audio(nextChunk.audioUrl);
+    audio.preload = "metadata";
+    audio.load();
+    preloadedNarrationAudioRef.current = audio;
+
+    return () => {
+      audio.removeAttribute("src");
       audio.load();
-      return audio;
-    });
-  }, []);
+      if (preloadedNarrationAudioRef.current === audio) {
+        preloadedNarrationAudioRef.current = null;
+      }
+    };
+  }, [currentChunk.id]);
 
   useEffect(() => {
     if (!isPresentationStarted || promptModal) {
@@ -347,6 +361,8 @@ export const ClientApp: React.FC = () => {
     audio.preload = "auto";
     audio.src = currentChunk.audioUrl;
     audio.currentTime = 0;
+    lastNarratorElapsedBucketRef.current = -1;
+    lastNarratorSubtitleRef.current = "";
     setNarratorElapsedSeconds(0);
     setNarratorSubtitle(buildTranscriptWindow(currentChunk.transcript, 0, currentChunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
     setIsNarratorPaused(false);
@@ -465,8 +481,17 @@ export const ClientApp: React.FC = () => {
     }
     const elapsed = audio.currentTime;
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : currentChunk.durationSeconds;
-    setNarratorElapsedSeconds(elapsed);
-    setNarratorSubtitle(buildTranscriptWindow(currentChunk.transcript, elapsed, duration, SUBTITLE_LEAD_SECONDS));
+    const elapsedBucket = Math.floor(elapsed * 2);
+    if (elapsedBucket !== lastNarratorElapsedBucketRef.current) {
+      lastNarratorElapsedBucketRef.current = elapsedBucket;
+      setNarratorElapsedSeconds(elapsed);
+    }
+
+    const nextSubtitle = buildTranscriptWindow(currentChunk.transcript, elapsed, duration, SUBTITLE_LEAD_SECONDS);
+    if (nextSubtitle !== lastNarratorSubtitleRef.current) {
+      lastNarratorSubtitleRef.current = nextSubtitle;
+      setNarratorSubtitle(nextSubtitle);
+    }
   }
 
   function handleNarratorEnded() {

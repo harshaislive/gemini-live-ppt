@@ -715,7 +715,9 @@ a:focus-visible {
 
 .beforest-story__video {
   display: block;
-  animation-duration: 24s;
+  animation: none;
+  transform: scale(1.02);
+  will-change: auto;
 }
 
 .beforest-story__scrim {

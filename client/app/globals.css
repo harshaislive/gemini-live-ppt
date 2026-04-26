@@ -2162,6 +2162,91 @@ a:focus-visible {
   scrollbar-color: rgba(255, 192, 131, 0.52) rgba(253, 251, 247, 0.08);
 }
 
+/* Premium black interaction layer: remove brown/green state colors. */
+.beforest-story__scrim {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.42) 0%, rgba(0, 0, 0, 0.08) 30%, rgba(0, 0, 0, 0.24) 58%, rgba(0, 0, 0, 0.86) 100%);
+}
+
+.beforest-story.is-live-focus .beforest-story__scrim {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.beforest-status,
+.beforest-access-card,
+.beforest-cta-card,
+.beforest-question-modal,
+.beforest-live-answer {
+  background: rgba(0, 0, 0, 0.76);
+  box-shadow: 0 28px 76px rgba(0, 0, 0, 0.42);
+}
+
+.beforest-question-backdrop {
+  background: rgba(0, 0, 0, 0.74);
+}
+
+.beforest-inline-error {
+  background: rgba(0, 0, 0, 0.82);
+  border-color: rgba(255, 192, 131, 0.34);
+}
+
+.beforest-mic-hint {
+  display: block;
+  margin: 0;
+  max-width: min(100%, 30rem);
+  color: rgba(253, 251, 247, 0.72);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.beforest-bottom-ui.is-live-mode .beforest-mic-hint {
+  display: block;
+  order: 1;
+}
+
+.beforest-mic-button,
+.beforest-secondary-action,
+.beforest-action-row.is-started .beforest-mic-button,
+.beforest-action-row.is-started .beforest-secondary-action {
+  background: rgba(0, 0, 0, 0.66);
+  border-color: rgba(253, 251, 247, 0.22);
+  color: var(--off-white);
+}
+
+.beforest-mic-button__surface,
+.beforest-action-row.is-started .beforest-mic-button__surface {
+  background: transparent;
+}
+
+.beforest-mic-button.is-open,
+.beforest-mic-button.is-speaking,
+.beforest-mic-button.is-open .beforest-mic-button__surface,
+.beforest-mic-button.is-speaking .beforest-mic-button__surface {
+  background: rgba(0, 0, 0, 0.82);
+  border-color: rgba(253, 251, 247, 0.5);
+}
+
+.beforest-live-answer__meta {
+  color: rgba(253, 251, 247, 0.72);
+}
+
+.beforest-live-answer__pulse {
+  background: var(--sand);
+  box-shadow: 0 0 0 7px rgba(255, 192, 131, 0.14);
+}
+
+@media (max-width: 768px) {
+  .beforest-action-row.is-started {
+    background: rgba(0, 0, 0, 0.7);
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+  }
+
+  .beforest-bottom-ui.is-live-mode .beforest-mic-hint {
+    width: min(100%, 20rem);
+    font-size: 0.76rem;
+  }
+}
+
 .beforest-live-answer__text::-webkit-scrollbar {
   width: 6px;
 }

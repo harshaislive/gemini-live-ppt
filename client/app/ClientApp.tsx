@@ -98,7 +98,8 @@ const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 const CONTINUOUS_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
-const SUBTITLE_LEAD_SECONDS = 1.8;
+const SUBTITLE_LEAD_SECONDS = 0.3;
+const LIVE_CONNECT_RETRY_DELAYS_MS = [650, 1400];
 const SUBSCRIBE_QUESTIONS: SubscribeQuestion[] = [
   {
     id: "interest",
@@ -174,6 +175,27 @@ function pcmBytesToLiveAudio(bytes: Uint8Array, sampleRate: number) {
     data: bytesToBase64(bytes),
     mimeType: `audio/pcm;rate=${sampleRate}`,
   };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function isRetryableLiveError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const message = error.message || "";
+  return /\b(503|service unavailable|unavailable|overloaded|try again)\b/i.test(message);
+}
+
+function getLiveConnectionError(error: unknown) {
+  if (isRetryableLiveError(error)) {
+    return "Gemini Live is temporarily unavailable. The walkthrough will continue; try the mic again in a moment.";
+  }
+  return getMicrophoneRuntimeError(error);
 }
 
 export const ClientApp: React.FC = () => {
@@ -866,7 +888,7 @@ export const ClientApp: React.FC = () => {
       const liveOpenPromise = new Promise<void>((resolve) => {
         markLiveOpen = resolve;
       });
-      const liveSession = await ai.live.connect({
+      const connectConfig = {
         model: token.model || MODEL,
         callbacks: {
           onopen: () => {
@@ -924,7 +946,22 @@ export const ClientApp: React.FC = () => {
             },
           },
         },
-      });
+      };
+      let liveSession: Session | null = null;
+      for (let attemptIndex = 0; attemptIndex <= LIVE_CONNECT_RETRY_DELAYS_MS.length; attemptIndex += 1) {
+        try {
+          liveSession = await ai.live.connect(connectConfig);
+          break;
+        } catch (error) {
+          if (!isRetryableLiveError(error) || attemptIndex === LIVE_CONNECT_RETRY_DELAYS_MS.length) {
+            throw error;
+          }
+          await sleep(LIVE_CONNECT_RETRY_DELAYS_MS[attemptIndex]);
+        }
+      }
+      if (!liveSession) {
+        throw new Error("Gemini Live connection failed.");
+      }
       sessionRef.current = liveSession;
       setGeminiToken(null);
       await Promise.race([
@@ -946,7 +983,6 @@ export const ClientApp: React.FC = () => {
       setUiError(micCapabilityError);
       return;
     }
-    pauseNarratorForMic();
     liveQuestionActiveRef.current = true;
     clearLiveAnswerResumeTimeout();
     setUiError(null);
@@ -967,6 +1003,7 @@ export const ClientApp: React.FC = () => {
       const sessionPromise = ensureLiveSession();
       pendingSessionPromise = sessionPromise;
       const [session, stream] = await Promise.all([sessionPromise, streamPromise]);
+      pauseNarratorForMic();
       const context = new AudioContext({ sampleRate: 16000 });
       if (context.state === "suspended") {
         await context.resume();
@@ -1043,7 +1080,7 @@ export const ClientApp: React.FC = () => {
       setLivePhase("listening");
     } catch (error) {
       setLivePhase("unavailable");
-      setUiError(getMicrophoneRuntimeError(error));
+      setUiError(getLiveConnectionError(error));
       openedStreams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
       stopRecorder();
       clearAnswerTimeout();
@@ -1128,22 +1165,22 @@ export const ClientApp: React.FC = () => {
     : !isPresentationStarted
       ? "Begin walkthrough"
       : isMicOpen
-        ? "Close question"
+        ? "Send question"
         : "Ask a question";
   const micHint = isPresentationStarted
     ? isMicOpen
-      ? "Tap again when you are done. The narrator will resume after the answer."
-      : "The narrator keeps control. Use the mic only when you want to interrupt."
+      ? "Speak now. Tap send when your question is complete."
+      : "Tap the mic to pause the narrator and ask one question."
     : "The presentation starts from committed audio, so there is no live wait at the beginning.";
 
   const livePanelTitle = livePhase === "answering" || liveAnswerText
     ? "Response"
     : isMicOpen
-      ? "Your question"
-      : "Live guide";
+      ? "Speak now"
+      : "Preparing mic";
   const livePanelText = livePhase === "answering" || liveAnswerText
     ? liveAnswerText || botTtsTranscript || "Answering now..."
-    : userTranscript.trim();
+    : userTranscript.trim() || "Ask your question naturally. When you are done, tap the send icon so the guide can answer and return to the walkthrough.";
 
   function renderSubtitle(text: string) {
     return text;

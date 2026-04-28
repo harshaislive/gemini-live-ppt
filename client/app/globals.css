@@ -2231,6 +2231,15 @@ a:focus-visible {
   border-color: rgba(253, 251, 247, 0.5);
 }
 
+.beforest-action-row.is-started .beforest-mic-button,
+.beforest-action-row.is-started .beforest-secondary-action,
+.beforest-action-row.is-started .beforest-mic-button.is-open,
+.beforest-action-row.is-started .beforest-mic-button.is-speaking,
+.beforest-action-row.is-started .beforest-mic-button.is-open .beforest-mic-button__surface,
+.beforest-action-row.is-started .beforest-mic-button.is-speaking .beforest-mic-button__surface {
+  border-color: transparent;
+}
+
 .beforest-live-answer__meta {
   color: rgba(253, 251, 247, 0.72);
 }
@@ -2242,8 +2251,8 @@ a:focus-visible {
 
 @media (max-width: 768px) {
   .beforest-action-row.is-started {
-    background: rgba(0, 0, 0, 0.7);
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.38);
+    background: transparent;
+    box-shadow: none;
   }
 
   .beforest-bottom-ui.is-live-mode .beforest-mic-hint {

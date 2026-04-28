@@ -2180,10 +2180,40 @@ a:focus-visible {
 .beforest-status,
 .beforest-access-card,
 .beforest-cta-card,
-.beforest-question-modal,
 .beforest-live-answer {
   background: rgba(0, 0, 0, 0.68);
   box-shadow: 0 22px 58px rgba(0, 0, 0, 0.32);
+}
+
+.beforest-question-modal {
+  background: #342e29;
+  border-color: rgba(255, 192, 131, 0.22);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+}
+
+.beforest-question-modal .beforest-question-eyebrow {
+  color: #ffc083;
+}
+
+.beforest-question-modal h2 {
+  color: #fdfbf7;
+}
+
+.beforest-question-modal .beforest-question-context {
+  color: rgba(253, 251, 247, 0.78);
+}
+
+.beforest-question-modal .beforest-question-options button,
+.beforest-question-modal .beforest-question-skip {
+  border-color: rgba(253, 251, 247, 0.18);
+  background: #4b3c35;
+  color: #fdfbf7;
+}
+
+.beforest-question-modal .beforest-question-options button:hover,
+.beforest-question-modal .beforest-question-skip:hover {
+  border-color: rgba(255, 192, 131, 0.48);
+  background: #342e29;
 }
 
 .beforest-question-backdrop {

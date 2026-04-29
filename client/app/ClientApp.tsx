@@ -134,6 +134,7 @@ const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 const FALLBACK_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
+const SUPPORTED_BACKGROUND_VIDEO_PATTERN = /\.(mp4|mov|webm)$/i;
 const VIDEO_AMBIENT_VOLUME = 0.09;
 const VIDEO_AMBIENT_DUCKED_VOLUME = 0.035;
 const SUBTITLE_LEAD_SECONDS = 0.3;
@@ -468,7 +469,7 @@ export const ClientApp: React.FC = () => {
           return;
         }
         const videos = data.videos.filter((video): video is string => (
-          typeof video === "string" && video.startsWith("/videos/") && video.endsWith(".mp4")
+          typeof video === "string" && video.startsWith("/videos/") && SUPPORTED_BACKGROUND_VIDEO_PATTERN.test(video)
         ));
         if (videos.length) {
           setBackgroundVideos(videos);

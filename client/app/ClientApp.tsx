@@ -9,7 +9,7 @@ import {
   type Session,
 } from "@google/genai";
 import { LoaderCircle, Mic, Pause, Play, Send } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { INITIAL_VISUAL } from "./beforest";
 import {
   NARRATION_CHUNKS,
@@ -33,6 +33,8 @@ import {
   extractAudioPayloadFromMessage,
   mergeRollingWords,
 } from "@/lib/gemini-live-utils";
+
+const ENABLE_BETWEEN_SLIDE_PROMPTS = false;
 
 type AccessState = {
   requiresPasscode: boolean;
@@ -131,11 +133,13 @@ const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
-const CONTINUOUS_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
+const FALLBACK_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
+const VIDEO_AMBIENT_VOLUME = 0.09;
+const VIDEO_AMBIENT_DUCKED_VOLUME = 0.035;
 const SUBTITLE_LEAD_SECONDS = 0.3;
-const AMBIENT_GAIN = 0.024;
-const AMBIENT_DUCKED_GAIN = 0.006;
+const AMBIENT_GAIN = 0;
+const AMBIENT_DUCKED_GAIN = 0;
 const LIVE_CONNECT_RETRY_DELAYS_MS = [650, 1400];
 const SUBSCRIBE_QUESTIONS: SubscribeQuestion[] = [
   {
@@ -281,6 +285,8 @@ export const ClientApp: React.FC = () => {
   const [subscribeStep, setSubscribeStep] = useState<number | null>(null);
   const [activeFaqId, setActiveFaqId] = useState<string | null>(null);
   const [isFaqReading, setIsFaqReading] = useState(false);
+  const [backgroundVideos, setBackgroundVideos] = useState<string[]>([FALLBACK_BACKGROUND_VIDEO_URL]);
+  const [backgroundVideoIndex, setBackgroundVideoIndex] = useState(0);
   const [subscribeForm, setSubscribeForm] = useState<SubscribeForm>({
     name: "",
     email: "",
@@ -315,6 +321,9 @@ export const ClientApp: React.FC = () => {
   const fullBotTranscriptRef = useRef("");
   const userTranscriptRef = useRef("");
   const shouldResumeNarratorRef = useRef(false);
+  const activeNarrationAudioUrlRef = useRef<string | null>(null);
+  const initialNarrationStartPromiseRef = useRef<Promise<void> | null>(null);
+  const ambientStartPromiseRef = useRef<Promise<void> | null>(null);
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
 
@@ -380,6 +389,50 @@ export const ClientApp: React.FC = () => {
     ? PREPARED_FAQS.find((faq) => faq.id === activeFaqId) || PREPARED_FAQS[0]
     : null;
   const shouldDuckAmbient = isLiveFocus || Boolean(activeFaq) || subscribeStep !== null;
+  const activeBackgroundVideoUrl = backgroundVideos[backgroundVideoIndex] || FALLBACK_BACKGROUND_VIDEO_URL;
+
+  const prepareNarrationCue = useCallback((chunk: NarrationChunk) => {
+    lastNarratorElapsedBucketRef.current = -1;
+    lastNarratorSubtitleRef.current = "";
+    setNarratorElapsedSeconds(0);
+    setNarratorSubtitle(buildTranscriptWindow(chunk.transcript, 0, chunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
+  }, []);
+
+  const playNarrationChunk = useCallback((chunk: NarrationChunk, options: { reportError: boolean }) => {
+    const audio = audioRef.current;
+    if (!audio) {
+      return Promise.resolve();
+    }
+
+    audio.preload = "auto";
+    audio.setAttribute("playsinline", "true");
+    audio.setAttribute("webkit-playsinline", "true");
+    if (activeNarrationAudioUrlRef.current !== chunk.audioUrl || audio.getAttribute("src") !== chunk.audioUrl) {
+      audio.src = chunk.audioUrl;
+      audio.load();
+    }
+    audio.currentTime = 0;
+    activeNarrationAudioUrlRef.current = chunk.audioUrl;
+    prepareNarrationCue(chunk);
+    setIsNarratorPaused(false);
+
+    return audio.play().then(() => undefined).catch((error) => {
+      setIsNarratorPaused(true);
+      if (options.reportError) {
+        setUiError(error instanceof Error ? error.message : "Could not start narration audio.");
+      }
+      throw error;
+    });
+  }, [prepareNarrationCue]);
+
+  const configureBackgroundVideo = useCallback((video: HTMLVideoElement, shouldUseAmbientAudio: boolean) => {
+    video.loop = false;
+    video.playsInline = true;
+    video.muted = !shouldUseAmbientAudio;
+    video.volume = shouldUseAmbientAudio
+      ? (shouldDuckAmbient ? VIDEO_AMBIENT_DUCKED_VOLUME : VIDEO_AMBIENT_VOLUME)
+      : 0;
+  }, [shouldDuckAmbient]);
 
   useEffect(() => {
     const activeLiveSources = activeLiveSourcesRef.current;
@@ -392,6 +445,22 @@ export const ClientApp: React.FC = () => {
       .then((response) => response.json())
       .then((data: AccessState) => setAccessState(data))
       .catch(() => setAccessState({ requiresPasscode: true, authorized: false }));
+
+    fetch("/api/background-videos", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data: { videos?: unknown }) => {
+        if (!Array.isArray(data.videos)) {
+          return;
+        }
+        const videos = data.videos.filter((video): video is string => (
+          typeof video === "string" && video.startsWith("/videos/") && video.endsWith(".mp4")
+        ));
+        if (videos.length) {
+          setBackgroundVideos(videos);
+          setBackgroundVideoIndex(0);
+        }
+      })
+      .catch(() => undefined);
 
     return () => {
       stopFaqReading();
@@ -436,9 +505,11 @@ export const ClientApp: React.FC = () => {
   useEffect(() => {
     if (!isPresentationStarted) {
       setAmbientGain(0);
+      setVideoAmbientVolume(0);
       return;
     }
     setAmbientGain(shouldDuckAmbient ? AMBIENT_DUCKED_GAIN : AMBIENT_GAIN);
+    setVideoAmbientVolume(shouldDuckAmbient ? VIDEO_AMBIENT_DUCKED_VOLUME : VIDEO_AMBIENT_VOLUME);
   }, [isPresentationStarted, shouldDuckAmbient]);
 
   useEffect(() => {
@@ -451,10 +522,12 @@ export const ClientApp: React.FC = () => {
     if (!video) {
       return;
     }
+    configureBackgroundVideo(video, isPresentationStarted);
+    video.load();
     void video.play().catch(() => {
-      // Muted background video can still be blocked until the first user gesture.
+      // iOS may still block media until the first user gesture; the primary button primes it.
     });
-  }, [isPresentationStarted]);
+  }, [activeBackgroundVideoUrl, configureBackgroundVideo, isPresentationStarted]);
 
   useEffect(() => {
     const nextChunk = getNextNarrationChunk(currentChunk.id);
@@ -481,23 +554,17 @@ export const ClientApp: React.FC = () => {
     if (!isPresentationStarted || promptModal) {
       return;
     }
-    const audio = audioRef.current;
-    if (!audio) {
+
+    if (
+      activeNarrationAudioUrlRef.current === currentChunk.audioUrl
+      && audioRef.current
+      && !audioRef.current.paused
+    ) {
       return;
     }
-    audio.preload = "auto";
-    audio.src = currentChunk.audioUrl;
-    audio.currentTime = 0;
-    lastNarratorElapsedBucketRef.current = -1;
-    lastNarratorSubtitleRef.current = "";
-    setNarratorElapsedSeconds(0);
-    setNarratorSubtitle(buildTranscriptWindow(currentChunk.transcript, 0, currentChunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
-    setIsNarratorPaused(false);
-    void audio.play().catch((error) => {
-      setIsNarratorPaused(true);
-      setUiError(error instanceof Error ? error.message : "Could not start narration audio.");
-    });
-  }, [currentChunk.audioUrl, currentChunk.durationSeconds, currentChunk.transcript, isPresentationStarted, promptModal]);
+
+    void playNarrationChunk(currentChunk, { reportError: true });
+  }, [currentChunk, isPresentationStarted, playNarrationChunk, promptModal]);
 
   async function ensurePresentationContext() {
     if (presentationContext) {
@@ -587,19 +654,45 @@ export const ClientApp: React.FC = () => {
     }
     setIsPreparing(true);
     setUiError(null);
+    const initialAudioStart = primeInitialNarrationPlayback({ reportError: false });
+    const ambientStart = startAmbientBed().catch(() => undefined);
     try {
       await ensurePresentationContext();
-      await startAmbientBed();
+      await ambientStart;
       setCompletedChunkIds([]);
       setAnsweredGateIds([]);
       setCurrentChunkId(NARRATION_CHUNKS[0].id);
       setIsPresentationStarted(true);
       setPromptModal(null);
+      await initialAudioStart;
     } catch (error) {
+      stopNarrationAudio();
       setUiError(error instanceof Error ? error.message : "Could not start the presentation.");
     } finally {
       setIsPreparing(false);
     }
+  }
+
+  function primeInitialNarrationPlayback(options: { reportError: boolean }) {
+    if (!initialNarrationStartPromiseRef.current) {
+      initialNarrationStartPromiseRef.current = playNarrationChunk(NARRATION_CHUNKS[0], options)
+        .finally(() => {
+          initialNarrationStartPromiseRef.current = null;
+        });
+    }
+    return initialNarrationStartPromiseRef.current;
+  }
+
+  function stopNarrationAudio() {
+    const audio = audioRef.current;
+    if (!audio) {
+      return;
+    }
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    activeNarrationAudioUrlRef.current = null;
+    setIsNarratorPaused(true);
   }
 
   function handleNarratorTimeUpdate() {
@@ -627,11 +720,42 @@ export const ClientApp: React.FC = () => {
       previous.includes(currentChunk.id) ? previous : [...previous, currentChunk.id]
     ));
     const gate = getGateAfterChunk(currentChunk.id);
-    if (gate && !answeredGateIds.includes(gate.id)) {
+    if (ENABLE_BETWEEN_SLIDE_PROMPTS && gate && !answeredGateIds.includes(gate.id)) {
       showGate(gate);
       return;
     }
     playNextChunk();
+  }
+
+  function setVideoAmbientVolume(volume: number) {
+    const video = videoRef.current;
+    if (!video) {
+      return;
+    }
+    video.volume = Math.max(0, Math.min(1, volume));
+    video.muted = volume <= 0;
+  }
+
+  function playBackgroundVideoFromGesture() {
+    const video = videoRef.current;
+    if (!video) {
+      return Promise.resolve();
+    }
+    configureBackgroundVideo(video, true);
+    return video.play().then(() => undefined);
+  }
+
+  function handleBackgroundVideoEnded() {
+    setBackgroundVideoIndex((previous) => (
+      backgroundVideos.length > 1 ? (previous + 1) % backgroundVideos.length : previous
+    ));
+    if (backgroundVideos.length <= 1) {
+      const video = videoRef.current;
+      if (video) {
+        video.currentTime = 0;
+        void video.play().catch(() => undefined);
+      }
+    }
   }
 
   function showGate(gate: NarrationGate) {
@@ -872,54 +996,65 @@ export const ClientApp: React.FC = () => {
       setAmbientGain(AMBIENT_GAIN);
       return;
     }
-
-    const context = new AudioContext({ sampleRate: 24000 });
-    if (context.state === "suspended") {
-      await context.resume();
+    if (ambientStartPromiseRef.current) {
+      await ambientStartPromiseRef.current;
+      setAmbientGain(AMBIENT_GAIN);
+      return;
     }
 
-    const masterGain = context.createGain();
-    masterGain.gain.value = 0;
-    masterGain.connect(context.destination);
+    ambientStartPromiseRef.current = (async () => {
+      const context = new AudioContext({ sampleRate: 24000 });
+      if (context.state === "suspended") {
+        await context.resume();
+      }
 
-    const highpass = context.createBiquadFilter();
-    highpass.type = "highpass";
-    highpass.frequency.value = 130;
+      const masterGain = context.createGain();
+      masterGain.gain.value = 0;
+      masterGain.connect(context.destination);
 
-    const lowpass = context.createBiquadFilter();
-    lowpass.type = "lowpass";
-    lowpass.frequency.value = 850;
+      const highpass = context.createBiquadFilter();
+      highpass.type = "highpass";
+      highpass.frequency.value = 130;
 
-    const streamGain = context.createGain();
-    streamGain.gain.value = 0.72;
+      const lowpass = context.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 850;
 
-    const bufferLength = context.sampleRate * 4;
-    const buffer = context.createBuffer(1, bufferLength, context.sampleRate);
-    const channel = buffer.getChannelData(0);
-    let previous = 0;
-    for (let index = 0; index < bufferLength; index += 1) {
-      const white = Math.random() * 2 - 1;
-      previous = (previous + 0.018 * white) / 1.018;
-      channel[index] = previous * 2.8;
-    }
+      const streamGain = context.createGain();
+      streamGain.gain.value = 0.72;
 
-    const source = context.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(highpass);
-    highpass.connect(lowpass);
-    lowpass.connect(streamGain);
-    streamGain.connect(masterGain);
-    source.start();
+      const bufferLength = context.sampleRate * 4;
+      const buffer = context.createBuffer(1, bufferLength, context.sampleRate);
+      const channel = buffer.getChannelData(0);
+      let previous = 0;
+      for (let index = 0; index < bufferLength; index += 1) {
+        const white = Math.random() * 2 - 1;
+        previous = (previous + 0.018 * white) / 1.018;
+        channel[index] = previous * 2.8;
+      }
 
-    ambientRef.current = {
-      context,
-      masterGain,
-      source,
-      chirpTimeout: null,
-    };
-    scheduleAmbientChirp();
-    setAmbientGain(AMBIENT_GAIN);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(highpass);
+      highpass.connect(lowpass);
+      lowpass.connect(streamGain);
+      streamGain.connect(masterGain);
+      source.start();
+
+      ambientRef.current = {
+        context,
+        masterGain,
+        source,
+        chirpTimeout: null,
+      };
+      scheduleAmbientChirp();
+      setAmbientGain(AMBIENT_GAIN);
+    })().finally(() => {
+      ambientStartPromiseRef.current = null;
+    });
+
+    await ambientStartPromiseRef.current;
   }
 
   function setAmbientGain(gain: number) {
@@ -1375,7 +1510,13 @@ export const ClientApp: React.FC = () => {
 
     const openedStreams: MediaStream[] = [];
     let pendingSessionPromise: Promise<Session> | null = null;
+    let micContext: AudioContext | null = null;
     try {
+      micContext = new AudioContext({ sampleRate: 16000 });
+      const micContextReady = micContext.state === "suspended"
+        ? micContext.resume()
+        : Promise.resolve();
+      const outputContextReady = ensureOutputAudioContext().catch(() => undefined);
       const streamPromise = navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
         openedStreams.push(stream);
         return stream;
@@ -1383,11 +1524,10 @@ export const ClientApp: React.FC = () => {
       const sessionPromise = ensureLiveSession();
       pendingSessionPromise = sessionPromise;
       const [session, stream] = await Promise.all([sessionPromise, streamPromise]);
+      await Promise.all([micContextReady, outputContextReady]);
       pauseNarratorForMic();
-      const context = new AudioContext({ sampleRate: 16000 });
-      if (context.state === "suspended") {
-        await context.resume();
-      }
+      const context = micContext;
+      micContext = null;
       const source = context.createMediaStreamSource(stream);
       const gain = context.createGain();
       gain.gain.value = 0;
@@ -1459,6 +1599,7 @@ export const ClientApp: React.FC = () => {
       startLocalSpeechPreview();
     } catch (error) {
       openedStreams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+      void micContext?.close().catch(() => undefined);
       void pendingSessionPromise?.then((session) => session.close()).catch(() => undefined);
       recoverFromLiveFailure(getLiveConnectionError(error));
     }
@@ -1530,6 +1671,14 @@ export const ClientApp: React.FC = () => {
       return;
     }
     void handleOpenMic();
+  }
+
+  function handlePrimaryPointerDown() {
+    if (!isPresentationStarted && canUsePrimaryAction) {
+      void primeInitialNarrationPlayback({ reportError: false }).catch(() => undefined);
+      void startAmbientBed().catch(() => undefined);
+      void playBackgroundVideoFromGesture().catch(() => undefined);
+    }
   }
 
   const actionLabel = isPreparing || livePhase === "connecting"
@@ -1605,11 +1754,11 @@ export const ClientApp: React.FC = () => {
           className="beforest-story__image beforest-story__video"
           poster={CONTINUOUS_BACKGROUND_POSTER_URL}
           autoPlay
-          muted
-          loop
+          muted={!isPresentationStarted}
           playsInline
+          onEnded={handleBackgroundVideoEnded}
         >
-          <source src={CONTINUOUS_BACKGROUND_VIDEO_URL} type="video/mp4" />
+          <source src={activeBackgroundVideoUrl} type="video/mp4" />
         </video>
 
         <div className="beforest-story__scrim" aria-hidden="true" />
@@ -1689,6 +1838,7 @@ export const ClientApp: React.FC = () => {
                     isPreparing || livePhase === "connecting" ? "is-busy" : "",
                     isBotSpeaking || livePhase === "answering" ? "is-speaking" : "",
                   ].filter(Boolean).join(" ")}
+                  onPointerDown={handlePrimaryPointerDown}
                   onClick={handlePrimaryAction}
                   disabled={!canUsePrimaryAction}
                   aria-label={actionLabel}

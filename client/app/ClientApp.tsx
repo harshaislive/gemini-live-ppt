@@ -129,7 +129,6 @@ const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
 const SUBSCRIBE_LEAD_STORAGE_KEY = "beforest_updates_lead";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_VOICE_ID = "Gacrux";
-const FOUNDING_SILENCE_URL = "https://10percent.beforest.co/the-founding-silence";
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
@@ -396,7 +395,8 @@ export const ClientApp: React.FC = () => {
   const activeSubscribeQuestion = subscribeStep && subscribeStep > 0
     ? SUBSCRIBE_QUESTIONS[subscribeStep - 1]
     : null;
-  const subscribeProgress = subscribeStep === null ? 0 : ((subscribeStep + 1) / (SUBSCRIBE_QUESTIONS.length + 1)) * 100;
+  const isSubscribeComplete = subscribeStep === SUBSCRIBE_QUESTIONS.length + 1;
+  const subscribeProgress = subscribeStep === null ? 0 : Math.min(100, ((subscribeStep + 1) / (SUBSCRIBE_QUESTIONS.length + 1)) * 100);
   const activeFaq = activeFaqId
     ? PREPARED_FAQS.find((faq) => faq.id === activeFaqId) || PREPARED_FAQS[0]
     : null;
@@ -937,13 +937,7 @@ export const ClientApp: React.FC = () => {
         ...lead,
         capturedAt: new Date().toISOString(),
       }));
-      const url = new URL(FOUNDING_SILENCE_URL);
-      url.searchParams.set("source", "beforest_live_guide");
-      url.searchParams.set("interest", lead.interest);
-      url.searchParams.set("timing", lead.timing);
-      url.searchParams.set("first_update", lead.firstUpdate);
-      window.open(url.toString(), "_blank", "noreferrer");
-      setSubscribeStep(null);
+      setSubscribeStep(SUBSCRIBE_QUESTIONS.length + 1);
     } catch (error) {
       setSubscribeError(error instanceof Error ? error.message : "Could not save this update request.");
     }
@@ -2042,6 +2036,19 @@ export const ClientApp: React.FC = () => {
                       </button>
                     </div>
                   </form>
+                ) : isSubscribeComplete ? (
+                  <>
+                    <p className="beforest-question-eyebrow">Updates / Received</p>
+                    <h2 id="beforest-subscribe-title">Thank you. We have got your update request.</h2>
+                    <p className="beforest-question-context">
+                      Beforest will use these details to send you the most relevant next note. No new tab, no redirect.
+                    </p>
+                    <div className="beforest-question-actions beforest-subscribe-actions">
+                      <button type="button" className="beforest-subscribe-next" onClick={closeSubscribeFlow}>
+                        Close
+                      </button>
+                    </div>
+                  </>
                 ) : activeSubscribeQuestion ? (
                   <>
                     <p className="beforest-question-eyebrow">{activeSubscribeQuestion.eyebrow}</p>

@@ -1,3 +1,4 @@
+import { NARRATION_CAPTION_CUES } from "./narrationCaptionCues";
 import type { PresentationSectionId } from "./presentationAgenda";
 
 export type NarrationChunkId =
@@ -16,6 +17,12 @@ export type NarrationGate = {
   question: string;
   context: string;
   options: string[];
+};
+
+export type CaptionCue = {
+  start: number;
+  end: number;
+  text: string;
 };
 
 export type PromptAnswerAction =
@@ -40,13 +47,14 @@ export type NarrationChunk = {
   audioUrl: string;
   transcript: string;
   speechTranscript?: string;
+  captionCues?: CaptionCue[];
   durationSeconds: number;
   resumeMode: "restart_chunk" | "next_chunk";
   returnLine: string;
   nextChunkId?: NarrationChunkId;
 };
 
-export const NARRATION_CHUNKS: NarrationChunk[] = [
+const RAW_NARRATION_CHUNKS: Omit<NarrationChunk, "captionCues">[] = [
   {
     id: "opening_definition",
     sectionId: "opening_definition",
@@ -157,6 +165,11 @@ export const NARRATION_CHUNKS: NarrationChunk[] = [
       "So that is the invitation. If you want food from landscapes where food forests naturally fit, Be Wild brings that to you. If you want to experience the land first, hospitality and experiences are good doors in. And if what you want is recurring access to Beforest landscapes without becoming a collective owner, then 10% is the point of this conversation. Thirty person-nights a year. Ten years. Access to real regenerating landscapes, without ownership burden. Start with the land. If the land makes sense, 10% is how you keep returning.",
   },
 ];
+
+export const NARRATION_CHUNKS: NarrationChunk[] = RAW_NARRATION_CHUNKS.map((chunk) => ({
+  ...chunk,
+  captionCues: NARRATION_CAPTION_CUES[chunk.id] || [],
+}));
 
 export const PREPARED_FAQS: PreparedFaq[] = [
   {
@@ -298,4 +311,19 @@ export function buildTranscriptWindow(transcript: string, elapsedSeconds: number
   const start = cueIndex * wordsPerCue;
   const end = Math.min(words.length, start + wordsPerCue);
   return words.slice(start, end).join(" ");
+}
+
+export function getNarrationCaption(
+  chunk: NarrationChunk,
+  elapsedSeconds: number,
+  durationSeconds = chunk.durationSeconds,
+  leadSeconds = 0.12,
+) {
+  const cueTime = Math.max(0, elapsedSeconds + leadSeconds);
+  const cue = chunk.captionCues?.find((captionCue, index, cues) => {
+    const nextCue = cues[index + 1];
+    return cueTime >= captionCue.start && cueTime < (nextCue?.start ?? captionCue.end);
+  });
+
+  return cue?.text || buildTranscriptWindow(chunk.transcript, elapsedSeconds, durationSeconds, leadSeconds);
 }

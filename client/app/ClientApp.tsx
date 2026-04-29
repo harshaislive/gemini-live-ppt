@@ -14,9 +14,9 @@ import { INITIAL_VISUAL } from "./beforest";
 import {
   NARRATION_CHUNKS,
   PREPARED_FAQS,
-  buildTranscriptWindow,
   getGateAfterChunk,
   getNarrationChunk,
+  getNarrationCaption,
   getNextNarrationChunk,
   getPromptAnswerAction,
   type NarrationChunk,
@@ -202,6 +202,18 @@ function getMicrophoneRuntimeError(error: unknown) {
   return message || "Microphone could not be opened in this browser session.";
 }
 
+function isInterruptedMediaPlayError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const name = "name" in error ? String(error.name) : "";
+  const message = error.message || "";
+  return name === "AbortError"
+    || /play\(\) request was interrupted/i.test(message)
+    || /interrupted by a call to pause/i.test(message)
+    || /interrupted by a new load request/i.test(message);
+}
+
 function getBrowserSpeechRecognitionConstructor() {
   const speechWindow = window as Window & {
     SpeechRecognition?: BrowserSpeechRecognitionConstructor;
@@ -361,7 +373,7 @@ export const ClientApp: React.FC = () => {
       return "Opening the live mic with the current presentation context.";
     }
     if (isPresentationStarted) {
-      return narratorSubtitle || buildTranscriptWindow(currentChunk.transcript, narratorElapsedSeconds, currentChunk.durationSeconds);
+      return narratorSubtitle || getNarrationCaption(currentChunk, narratorElapsedSeconds, currentChunk.durationSeconds);
     }
     return "Start the presentation. The narrator plays immediately; the mic is only for interruptions.";
   }, [
@@ -395,7 +407,7 @@ export const ClientApp: React.FC = () => {
     lastNarratorElapsedBucketRef.current = -1;
     lastNarratorSubtitleRef.current = "";
     setNarratorElapsedSeconds(0);
-    setNarratorSubtitle(buildTranscriptWindow(chunk.transcript, 0, chunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
+    setNarratorSubtitle(getNarrationCaption(chunk, 0, chunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
   }, []);
 
   const playNarrationChunk = useCallback((chunk: NarrationChunk, options: { reportError: boolean }) => {
@@ -417,6 +429,9 @@ export const ClientApp: React.FC = () => {
     setIsNarratorPaused(false);
 
     return audio.play().then(() => undefined).catch((error) => {
+      if (isInterruptedMediaPlayError(error)) {
+        return;
+      }
       setIsNarratorPaused(true);
       if (options.reportError) {
         setUiError(error instanceof Error ? error.message : "Could not start narration audio.");
@@ -708,7 +723,7 @@ export const ClientApp: React.FC = () => {
       setNarratorElapsedSeconds(elapsed);
     }
 
-    const nextSubtitle = buildTranscriptWindow(currentChunk.transcript, elapsed, duration, SUBTITLE_LEAD_SECONDS);
+    const nextSubtitle = getNarrationCaption(currentChunk, elapsed, duration, SUBTITLE_LEAD_SECONDS);
     if (nextSubtitle !== lastNarratorSubtitleRef.current) {
       lastNarratorSubtitleRef.current = nextSubtitle;
       setNarratorSubtitle(nextSubtitle);
@@ -775,7 +790,7 @@ export const ClientApp: React.FC = () => {
       return;
     }
     setNarratorElapsedSeconds(0);
-    setNarratorSubtitle(buildTranscriptWindow(nextChunk.transcript, 0, nextChunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
+    setNarratorSubtitle(getNarrationCaption(nextChunk, 0, nextChunk.durationSeconds, SUBTITLE_LEAD_SECONDS));
     setCurrentChunkId(nextChunk.id);
   }
 
@@ -949,13 +964,28 @@ export const ClientApp: React.FC = () => {
     if (!audio || !isPresentationStarted || isLiveBusy || isMicOpen) {
       return;
     }
+    const video = videoRef.current;
     if (audio.paused) {
       setIsNarratorPaused(false);
-      void audio.play();
+      void audio.play().catch((error) => {
+        if (isInterruptedMediaPlayError(error)) {
+          return;
+        }
+        setIsNarratorPaused(true);
+        setUiError(error instanceof Error ? error.message : "Could not resume narration audio.");
+      });
+      void video?.play().catch(() => undefined);
     } else {
       audio.pause();
+      video?.pause();
       setIsNarratorPaused(true);
     }
+  }
+
+  function pauseWalkthroughMedia() {
+    audioRef.current?.pause();
+    videoRef.current?.pause();
+    setIsNarratorPaused(true);
   }
 
   function pauseNarratorForMic() {
@@ -987,7 +1017,12 @@ export const ClientApp: React.FC = () => {
     pendingBotTranscriptRef.current = "";
     fullBotTranscriptRef.current = "";
     setIsNarratorPaused(false);
-    void audio.play().catch(() => setIsNarratorPaused(true));
+    void audio.play().catch((error) => {
+      if (isInterruptedMediaPlayError(error)) {
+        return;
+      }
+      setIsNarratorPaused(true);
+    });
   }
 
   async function startAmbientBed() {
@@ -1716,8 +1751,8 @@ export const ClientApp: React.FC = () => {
   }
 
   function renderTrackedNarrationSubtitle() {
-    return narratorSubtitle || buildTranscriptWindow(
-      currentChunk.transcript,
+    return narratorSubtitle || getNarrationCaption(
+      currentChunk,
       narratorElapsedSeconds,
       currentChunk.durationSeconds,
       SUBTITLE_LEAD_SECONDS,
@@ -1910,7 +1945,13 @@ export const ClientApp: React.FC = () => {
               <div className="beforest-cta-card">
                 <p className="beforest-cta-eyebrow">Choose the right next step</p>
                 <h2 className="beforest-cta-title">The land will explain this more clearly than a pitch.</h2>
-                <a className="beforest-cta-button" href={TRIAL_STAY_URL} target="_blank" rel="noreferrer">
+                <a
+                  className="beforest-cta-button"
+                  href={TRIAL_STAY_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={pauseWalkthroughMedia}
+                >
                   Take a trial stay
                 </a>
                 <button type="button" className="beforest-cta-button secondary" onClick={openSubscribeFlow}>

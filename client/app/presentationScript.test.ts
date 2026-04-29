@@ -5,6 +5,7 @@ import {
   NARRATION_CHUNKS,
   PREPARED_FAQS,
   buildTranscriptWindow,
+  getNarrationCaption,
   getPromptAnswerAction,
 } from "./presentationScript";
 
@@ -59,6 +60,26 @@ describe("subtitle cue timing", () => {
       const cue = buildTranscriptWindow(chunk.transcript, chunk.durationSeconds - 0.05, chunk.durationSeconds);
       const finalWord = chunk.transcript.split(/\s+/).filter(Boolean).at(-1);
       expect(cue, chunk.id).toContain(finalWord);
+    }
+  });
+
+  it("uses committed timed caption cues when available", () => {
+    for (const chunk of NARRATION_CHUNKS) {
+      expect(chunk.captionCues?.length, chunk.id).toBeGreaterThan(0);
+      expect(getNarrationCaption(chunk, 0, chunk.durationSeconds), chunk.id).toBe(chunk.captionCues?.[0]?.text);
+    }
+  });
+
+  it("keeps timed cues ordered and short", () => {
+    for (const chunk of NARRATION_CHUNKS) {
+      let previousEnd = 0;
+      for (const cue of chunk.captionCues || []) {
+        expect(cue.start, chunk.id).toBeGreaterThanOrEqual(previousEnd - 0.01);
+        expect(cue.end, chunk.id).toBeGreaterThan(cue.start);
+        expect(cue.end, chunk.id).toBeLessThanOrEqual(chunk.durationSeconds + 0.25);
+        expect(cue.text.split(/\s+/).filter(Boolean).length, chunk.id).toBeLessThanOrEqual(5);
+        previousEnd = cue.end;
+      }
     }
   });
 });

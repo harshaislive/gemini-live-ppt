@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "generate:narration": "tsx scripts/generate-narration.ts",
+    "generate:caption-cues": "tsx scripts/generate-caption-cues.ts",
     "generate:faq-audio": "tsx scripts/generate-faq-audio.ts"
   },
   "dependencies": {

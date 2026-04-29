@@ -15,6 +15,8 @@ type LeadPayload = {
   firstUpdate: string;
 };
 
+const DEFAULT_SUBSCRIBE_LEAD_WEBHOOK_URL = "https://windmill.devsharsha.live/api/w/beforest-automations/jobs/run/f/u/harsha/8AtQ5flwFWeX";
+
 function clean(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 300) : "";
 }
@@ -39,14 +41,15 @@ function validateLead(body: Record<string, unknown>): LeadPayload {
 }
 
 async function persistLead(lead: LeadPayload) {
-  const webhookUrl = getServerEnv("SUBSCRIBE_LEAD_WEBHOOK_URL")?.trim();
+  const webhookUrl = getServerEnv("SUBSCRIBE_LEAD_WEBHOOK_URL")?.trim()
+    || DEFAULT_SUBSCRIBE_LEAD_WEBHOOK_URL;
   const event = {
     ...lead,
     source: "beforest-live-guide",
     capturedAt: new Date().toISOString(),
   };
 
-  if (webhookUrl) {
+  if (webhookUrl && webhookUrl !== "file://local" && webhookUrl !== "local") {
     const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

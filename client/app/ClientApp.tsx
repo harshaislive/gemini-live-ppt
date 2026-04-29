@@ -924,6 +924,16 @@ export const ClientApp: React.FC = () => {
   async function submitSubscribeLead(lead: SubscribeForm) {
     setSubscribeError("");
     try {
+      window.localStorage.setItem(SUBSCRIBE_LEAD_STORAGE_KEY, JSON.stringify({
+        ...lead,
+        capturedAt: new Date().toISOString(),
+      }));
+    } catch (error) {
+      console.warn("Could not store subscribe lead locally", error);
+    }
+    setSubscribeStep(SUBSCRIBE_QUESTIONS.length + 1);
+
+    try {
       const response = await fetch("/api/subscribe-lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -933,13 +943,8 @@ export const ClientApp: React.FC = () => {
         const data = await response.json().catch(() => ({} as Record<string, unknown>));
         throw new Error(String(data.error || "Could not save this update request."));
       }
-      window.localStorage.setItem(SUBSCRIBE_LEAD_STORAGE_KEY, JSON.stringify({
-        ...lead,
-        capturedAt: new Date().toISOString(),
-      }));
-      setSubscribeStep(SUBSCRIBE_QUESTIONS.length + 1);
     } catch (error) {
-      setSubscribeError(error instanceof Error ? error.message : "Could not save this update request.");
+      console.warn("Subscribe lead capture failed after local completion", error);
     }
   }
 

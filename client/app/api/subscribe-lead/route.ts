@@ -40,6 +40,12 @@ function validateLead(body: Record<string, unknown>): LeadPayload {
   return lead;
 }
 
+async function appendLeadLocally(event: LeadPayload & { source: string; capturedAt: string }) {
+  const dir = path.resolve(process.cwd(), ".leads");
+  await mkdir(dir, { recursive: true });
+  await appendFile(path.join(dir, "beforest-updates.jsonl"), `${JSON.stringify(event)}\n`, "utf8");
+}
+
 async function persistLead(lead: LeadPayload) {
   const webhookUrl = getServerEnv("SUBSCRIBE_LEAD_WEBHOOK_URL")?.trim()
     || DEFAULT_SUBSCRIBE_LEAD_WEBHOOK_URL;
@@ -50,28 +56,36 @@ async function persistLead(lead: LeadPayload) {
   };
 
   if (webhookUrl && webhookUrl !== "file://local" && webhookUrl !== "local") {
-    const response = await fetch(webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(event),
-    });
-    if (!response.ok) {
-      throw new Error("Lead webhook failed.");
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(event),
+      });
+      if (response.ok) {
+        return { captured: true, fallback: false };
+      }
+      console.error("Lead webhook failed", response.status);
+    } catch (error) {
+      console.error("Lead webhook failed", error);
     }
-    return;
   }
 
-  const dir = path.resolve(process.cwd(), ".leads");
-  await mkdir(dir, { recursive: true });
-  await appendFile(path.join(dir, "beforest-updates.jsonl"), `${JSON.stringify(event)}\n`, "utf8");
+  try {
+    await appendLeadLocally(event);
+    return { captured: true, fallback: true };
+  } catch (error) {
+    console.error("Failed to capture subscribe lead locally", error);
+    return { captured: false, fallback: true };
+  }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
     const lead = validateLead(body as Record<string, unknown>);
-    await persistLead(lead);
-    return NextResponse.json({ ok: true });
+    const result = await persistLead(lead);
+    return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     console.error("Failed to capture subscribe lead", error);
     return NextResponse.json({ error: "Could not save this update request." }, { status: 400 });

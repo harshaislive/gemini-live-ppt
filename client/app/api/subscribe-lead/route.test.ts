@@ -80,4 +80,45 @@ describe("subscribe lead route", () => {
       "utf8",
     );
   });
+
+  it("falls back to jsonl when the webhook fails", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(null, { status: 502 }));
+
+    const response = await POST(request({
+      name: "Harsha",
+      email: "HARSH@example.com",
+      phone: "+91 9999999999",
+      interest: "Coorg",
+      timing: "This quarter",
+      firstUpdate: "Blyton",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(mkdir).toHaveBeenCalled();
+    expect(appendFile).toHaveBeenCalledWith(
+      expect.stringContaining("beforest-updates.jsonl"),
+      expect.stringContaining("\"email\":\"harsh@example.com\""),
+      "utf8",
+    );
+  });
+
+  it("does not reject valid leads when every persistence target fails", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new Error("webhook offline"));
+    vi.mocked(appendFile).mockRejectedValueOnce(new Error("disk offline"));
+
+    const response = await POST(request({
+      name: "Harsha",
+      email: "HARSH@example.com",
+      phone: "+91 9999999999",
+      interest: "Coorg",
+      timing: "This quarter",
+      firstUpdate: "Blyton",
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      captured: false,
+    });
+  });
 });

@@ -439,12 +439,12 @@ export const ClientApp: React.FC = () => {
   const hasCapturedQuestion = Boolean(userTranscript.trim());
   const displayedSubtitle = useMemo(() => {
     if (!accessState) {
-      return "Preparing the presentation...";
+      return "Preparing your forest guide...";
     }
     if (shouldShowAccessForm) {
       return accessState.requiresPasscode
-        ? "Enter your name and passcode to open the presentation."
-        : "Enter your name to open the presentation.";
+        ? "Enter your name and passcode to begin the guide."
+        : "Enter your name to begin the guide.";
     }
     if (isMicOpen) {
       return hasCapturedQuestion
@@ -2092,7 +2092,7 @@ export const ClientApp: React.FC = () => {
         ? "Question captured. Tap send when complete."
         : "Speak now. Tap send when your question is complete."
       : "Tap the mic to pause the narrator and ask one question."
-    : "The presentation starts from committed audio, so there is no live wait at the beginning.";
+    : "Step in when you are ready. The guide begins with sound, rain, and a little quiet.";
 
   const livePanelTitle = livePhase === "answering" || liveAnswerText
     ? "Response"
@@ -2297,7 +2297,7 @@ export const ClientApp: React.FC = () => {
                   />
                 ) : null}
                 <button type="submit" className="beforest-access-button" disabled={isUnlocking}>
-                  {isUnlocking ? "Opening..." : "Open presentation"}
+                  {isUnlocking ? "Opening..." : "Begin the guide"}
                 </button>
               </form>
             ) : null}

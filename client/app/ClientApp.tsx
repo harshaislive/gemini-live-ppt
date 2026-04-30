@@ -39,6 +39,7 @@ const ENABLE_BETWEEN_SLIDE_PROMPTS = false;
 type AccessState = {
   requiresPasscode: boolean;
   authorized: boolean;
+  invite?: InviteIdentity | null;
 };
 
 type PresentationContext = {
@@ -125,8 +126,37 @@ type BrowserSpeechRecognition = {
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 
+type AnalyticsEvent = {
+  eventType: "interaction" | "slide_metric" | "question" | "faq_metric";
+  eventName: string;
+  sessionId: string;
+  listenerName: string;
+  slideId: string;
+  slideLabel: string;
+  visualId: string;
+  inviteId: string;
+  inviteeName: string;
+  inviteeEmail: string;
+  inviteePhone: string;
+  campaign: string;
+  source: string;
+  occurredAt: string;
+  payload: Record<string, unknown>;
+};
+
+type InviteIdentity = {
+  inviteId: string;
+  inviteeName: string;
+  inviteeEmail: string;
+  inviteePhone: string;
+  campaign: string;
+  source: string;
+};
+
 const LISTENER_NAME_STORAGE_KEY = "beforest_listener_name";
 const SUBSCRIBE_LEAD_STORAGE_KEY = "beforest_updates_lead";
+const ANALYTICS_SESSION_STORAGE_KEY = "beforest_analytics_session_id";
+const INVITE_IDENTITY_STORAGE_KEY = "beforest_invite_identity";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_VOICE_ID = "Gacrux";
 const TRIAL_STAY_URL = "https://hospitality.beforest.co";
@@ -220,6 +250,40 @@ function getBrowserSpeechRecognitionConstructor() {
     webkitSpeechRecognition?: BrowserSpeechRecognitionConstructor;
   };
   return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+}
+
+function createAnalyticsSessionId() {
+  if (typeof window !== "undefined") {
+    const stored = window.sessionStorage.getItem(ANALYTICS_SESSION_STORAGE_KEY);
+    if (stored) {
+      return stored;
+    }
+  }
+  const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `session-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  if (typeof window !== "undefined") {
+    window.sessionStorage.setItem(ANALYTICS_SESSION_STORAGE_KEY, id);
+  }
+  return id;
+}
+
+function sendAnalyticsEvent(event: AnalyticsEvent) {
+  const body = JSON.stringify(event);
+  if (typeof navigator !== "undefined" && navigator.sendBeacon) {
+    const sent = navigator.sendBeacon("/api/analytics", new Blob([body], { type: "application/json" }));
+    if (sent) {
+      return;
+    }
+  }
+  void fetch("/api/analytics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch((error) => {
+    console.warn("Analytics capture failed", error);
+  });
 }
 
 function float32ToPcm16(input: Float32Array) {
@@ -338,6 +402,22 @@ export const ClientApp: React.FC = () => {
   const ambientStartPromiseRef = useRef<Promise<void> | null>(null);
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
+  const analyticsSessionIdRef = useRef<string | null>(null);
+  const inviteIdentityRef = useRef<InviteIdentity | null>(null);
+  const slideVisitRef = useRef<{
+    slideId: NarrationChunkId;
+    slideLabel: string;
+    visualId: string;
+    startedAt: string;
+    maxElapsedSeconds: number;
+  } | null>(null);
+  const lastPersistedQuestionRef = useRef("");
+  const faqVisitRef = useRef<{
+    faqId: string;
+    question: string;
+    startedAt: string;
+    audioStartedAt: string | null;
+  } | null>(null);
 
   const currentChunk = getNarrationChunk(currentChunkId);
   const isAccessReady = Boolean(accessState?.authorized && listenerName.trim() && hasConfirmedListener);
@@ -404,6 +484,92 @@ export const ClientApp: React.FC = () => {
   const shouldDuckAmbient = isLiveFocus || Boolean(activeFaq) || subscribeStep !== null;
   const activeBackgroundVideoUrl = backgroundVideos[backgroundVideoIndex] || FALLBACK_BACKGROUND_VIDEO_URL;
 
+  function getAnalyticsSessionId() {
+    if (!analyticsSessionIdRef.current) {
+      analyticsSessionIdRef.current = createAnalyticsSessionId();
+    }
+    return analyticsSessionIdRef.current;
+  }
+
+  function trackAnalyticsEvent(
+    eventType: AnalyticsEvent["eventType"],
+    eventName: string,
+    payload: Record<string, unknown> = {},
+    chunk: NarrationChunk = currentChunk,
+  ) {
+    sendAnalyticsEvent({
+      eventType,
+      eventName,
+      sessionId: getAnalyticsSessionId(),
+      listenerName: listenerName.trim(),
+      slideId: chunk.id,
+      slideLabel: chunk.stageLabel,
+      visualId: visual.id || chunk.visualId,
+      inviteId: inviteIdentityRef.current?.inviteId || "",
+      inviteeName: inviteIdentityRef.current?.inviteeName || "",
+      inviteeEmail: inviteIdentityRef.current?.inviteeEmail || "",
+      inviteePhone: inviteIdentityRef.current?.inviteePhone || "",
+      campaign: inviteIdentityRef.current?.campaign || "",
+      source: inviteIdentityRef.current?.source || "",
+      occurredAt: new Date().toISOString(),
+      payload,
+    });
+  }
+
+  function startSlideVisit(chunk: NarrationChunk) {
+    slideVisitRef.current = {
+      slideId: chunk.id,
+      slideLabel: chunk.stageLabel,
+      visualId: chunk.visualId,
+      startedAt: new Date().toISOString(),
+      maxElapsedSeconds: 0,
+    };
+    trackAnalyticsEvent("interaction", "slide_started", {
+      sectionId: chunk.sectionId,
+      durationSeconds: chunk.durationSeconds,
+      resumeMode: chunk.resumeMode,
+    }, chunk);
+  }
+
+  function captureSlideMetric(exitReason: string, completed: boolean, chunk: NarrationChunk = currentChunk) {
+    const visit = slideVisitRef.current;
+    if (!visit || visit.slideId !== chunk.id) {
+      return;
+    }
+    const endedAt = new Date().toISOString();
+    trackAnalyticsEvent("slide_metric", "slide_view", {
+      startedAt: visit.startedAt,
+      endedAt,
+      durationMs: Date.parse(endedAt) - Date.parse(visit.startedAt),
+      maxElapsedSeconds: visit.maxElapsedSeconds,
+      plannedDurationSeconds: chunk.durationSeconds,
+      sectionId: chunk.sectionId,
+      completed,
+      exitReason,
+    }, chunk);
+    slideVisitRef.current = null;
+  }
+
+  function captureFaqMetric(action: string, completed = false) {
+    const visit = faqVisitRef.current;
+    if (!visit) {
+      return;
+    }
+    const endedAt = new Date().toISOString();
+    const startedAt = visit.audioStartedAt || visit.startedAt;
+    trackAnalyticsEvent("faq_metric", action, {
+      faqId: visit.faqId,
+      question: visit.question,
+      startedAt,
+      endedAt,
+      durationMs: Date.parse(endedAt) - Date.parse(startedAt),
+      completed,
+    });
+    if (action === "faq_closed" || completed) {
+      faqVisitRef.current = null;
+    }
+  }
+
   const prepareNarrationCue = useCallback((chunk: NarrationChunk) => {
     lastNarratorElapsedBucketRef.current = -1;
     lastNarratorSubtitleRef.current = "";
@@ -456,10 +622,32 @@ export const ClientApp: React.FC = () => {
     if (storedName) {
       setListenerName(storedName);
     }
+    const storedInvite = window.localStorage.getItem(INVITE_IDENTITY_STORAGE_KEY);
+    if (storedInvite) {
+      try {
+        inviteIdentityRef.current = JSON.parse(storedInvite) as InviteIdentity;
+      } catch {
+        window.localStorage.removeItem(INVITE_IDENTITY_STORAGE_KEY);
+      }
+    }
 
-    fetch("/api/access", { cache: "no-store" })
+    const inviteToken = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
+    const accessUrl = inviteToken
+      ? `/api/access?invite=${encodeURIComponent(inviteToken)}`
+      : "/api/access";
+
+    fetch(accessUrl, { cache: "no-store" })
       .then((response) => response.json())
-      .then((data: AccessState) => setAccessState(data))
+      .then((data: AccessState) => {
+        if (data.invite?.inviteId) {
+          inviteIdentityRef.current = data.invite;
+          window.localStorage.setItem(INVITE_IDENTITY_STORAGE_KEY, JSON.stringify(data.invite));
+          if (!storedName && data.invite.inviteeName) {
+            setListenerName(data.invite.inviteeName);
+          }
+        }
+        setAccessState(data);
+      })
       .catch(() => setAccessState({ requiresPasscode: true, authorized: false }));
 
     fetch("/api/background-videos", { cache: "no-store" })
@@ -532,6 +720,18 @@ export const ClientApp: React.FC = () => {
     const sectionVisual = imagesRef.current.find((image) => image.id === currentChunk.visualId);
     setVisual((previous) => sectionVisual ? { ...sectionVisual, videoUrl: previous.videoUrl } : previous);
   }, [currentChunk.visualId]);
+
+  useEffect(() => {
+    if (!isPresentationStarted) {
+      return;
+    }
+    startSlideVisit(currentChunk);
+    return () => {
+      captureSlideMetric("slide_changed", false, currentChunk);
+    };
+    // Slide visit boundaries should follow only the active chunk and presentation lifecycle.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChunk, isPresentationStarted]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -633,12 +833,18 @@ export const ClientApp: React.FC = () => {
     if (accessState?.authorized) {
       setHasConfirmedListener(true);
       setUiError(null);
+      trackAnalyticsEvent("interaction", "listener_confirmed", {
+        requiresPasscode: false,
+      });
       return;
     }
     if (!accessState?.requiresPasscode) {
       setAccessState({ requiresPasscode: false, authorized: true });
       setHasConfirmedListener(true);
       setUiError(null);
+      trackAnalyticsEvent("interaction", "listener_confirmed", {
+        requiresPasscode: false,
+      });
       return;
     }
     setIsUnlocking(true);
@@ -653,9 +859,16 @@ export const ClientApp: React.FC = () => {
       if (!response.ok || !data.authorized) {
         throw new Error(String(data.error || "Unable to unlock the presentation."));
       }
+      if (data.invite?.inviteId) {
+        inviteIdentityRef.current = data.invite as InviteIdentity;
+        window.localStorage.setItem(INVITE_IDENTITY_STORAGE_KEY, JSON.stringify(data.invite));
+      }
       setAccessState({ requiresPasscode: Boolean(data.requiresPasscode), authorized: true });
       setHasConfirmedListener(true);
       setPasscode("");
+      trackAnalyticsEvent("interaction", "presentation_unlocked", {
+        requiresPasscode: Boolean(data.requiresPasscode),
+      });
     } catch (error) {
       setUiError(error instanceof Error ? error.message : "Unable to unlock the presentation.");
     } finally {
@@ -680,6 +893,9 @@ export const ClientApp: React.FC = () => {
       setCurrentChunkId(NARRATION_CHUNKS[0].id);
       setIsPresentationStarted(true);
       setPromptModal(null);
+      trackAnalyticsEvent("interaction", "presentation_started", {
+        backgroundVideoUrl: activeBackgroundVideoUrl,
+      }, NARRATION_CHUNKS[0]);
       await initialAudioStart;
     } catch (error) {
       stopNarrationAudio();
@@ -718,6 +934,9 @@ export const ClientApp: React.FC = () => {
     }
     const elapsed = audio.currentTime;
     const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : currentChunk.durationSeconds;
+    if (slideVisitRef.current?.slideId === currentChunk.id) {
+      slideVisitRef.current.maxElapsedSeconds = Math.max(slideVisitRef.current.maxElapsedSeconds, elapsed);
+    }
     const elapsedBucket = Math.floor(elapsed * 2);
     if (elapsedBucket !== lastNarratorElapsedBucketRef.current) {
       lastNarratorElapsedBucketRef.current = elapsedBucket;
@@ -732,6 +951,7 @@ export const ClientApp: React.FC = () => {
   }
 
   function handleNarratorEnded() {
+    captureSlideMetric("narration_ended", true);
     setCompletedChunkIds((previous) => (
       previous.includes(currentChunk.id) ? previous : [...previous, currentChunk.id]
     ));
@@ -762,6 +982,10 @@ export const ClientApp: React.FC = () => {
   }
 
   function handleBackgroundVideoEnded() {
+    trackAnalyticsEvent("interaction", "background_video_ended", {
+      videoUrl: activeBackgroundVideoUrl,
+      videoIndex: backgroundVideoIndex,
+    });
     setBackgroundVideoIndex((previous) => (
       backgroundVideos.length > 1 ? (previous + 1) % backgroundVideos.length : previous
     ));
@@ -776,6 +1000,11 @@ export const ClientApp: React.FC = () => {
 
   function showGate(gate: NarrationGate) {
     setIsNarratorPaused(true);
+    trackAnalyticsEvent("interaction", "prompt_opened", {
+      gateId: gate.id,
+      question: gate.question,
+      options: gate.options,
+    });
     setPromptModal({
       id: gate.id,
       question: gate.question,
@@ -788,6 +1017,9 @@ export const ClientApp: React.FC = () => {
     const nextChunk = getNextNarrationChunk(currentChunk.id);
     if (!nextChunk) {
       setIsNarratorPaused(true);
+      trackAnalyticsEvent("interaction", "presentation_completed", {
+        completedChunks: [...completedChunkIds, currentChunk.id],
+      });
       return;
     }
     setNarratorElapsedSeconds(0);
@@ -805,6 +1037,11 @@ export const ClientApp: React.FC = () => {
     ));
     setPromptModal(null);
     setBotTtsTranscript(`Noted: ${answer}`);
+    trackAnalyticsEvent("interaction", "prompt_answered", {
+      gateId,
+      answer,
+      question: promptModal.question,
+    });
 
     const action = getPromptAnswerAction(gateId, answer);
     if (action === "show_trial_cta") {
@@ -840,11 +1077,18 @@ export const ClientApp: React.FC = () => {
     setUiError(null);
     setSubscribeError("");
     setSubscribeStep(0);
+    trackAnalyticsEvent("interaction", "subscribe_opened", {
+      source: visual.id,
+    });
   }
 
   function closeSubscribeFlow() {
     setSubscribeError("");
     setSubscribeStep(null);
+    trackAnalyticsEvent("interaction", "subscribe_closed", {
+      step: subscribeStep,
+      completed: isSubscribeComplete,
+    });
   }
 
   function openFaqModal(faq: PreparedFaq = PREPARED_FAQS[0]) {
@@ -855,11 +1099,25 @@ export const ClientApp: React.FC = () => {
     }
     setUiError(null);
     setActiveFaqId(faq.id);
+    faqVisitRef.current = {
+      faqId: faq.id,
+      question: faq.question,
+      startedAt: new Date().toISOString(),
+      audioStartedAt: null,
+    };
+    trackAnalyticsEvent("interaction", "faq_opened", {
+      faqId: faq.id,
+      question: faq.question,
+    });
   }
 
   function closeFaqModal() {
     stopFaqReading();
     setActiveFaqId(null);
+    captureFaqMetric("faq_closed", false);
+    trackAnalyticsEvent("interaction", "faq_closed", {
+      faqId: activeFaqId,
+    });
   }
 
   function stopFaqReading() {
@@ -881,6 +1139,13 @@ export const ClientApp: React.FC = () => {
     faqAudio.src = faq.audioUrl;
     faqAudio.currentTime = 0;
     setIsFaqReading(true);
+    if (faqVisitRef.current?.faqId === faq.id) {
+      faqVisitRef.current.audioStartedAt = new Date().toISOString();
+    }
+    trackAnalyticsEvent("interaction", "faq_audio_played", {
+      faqId: faq.id,
+      question: faq.question,
+    });
     void faqAudio.play().catch(() => {
       setIsFaqReading(false);
       setUiError("FAQ audio could not play in this browser session. You can still read the answer here.");
@@ -907,9 +1172,40 @@ export const ClientApp: React.FC = () => {
     setSubscribeForm((previous) => ({ ...previous, name, email, phone }));
     setSubscribeError("");
     setSubscribeStep(1);
+    trackAnalyticsEvent("interaction", "subscribe_contact_submitted", {
+      hasEmail: Boolean(email),
+      hasPhone: Boolean(phone),
+    });
+  }
+
+  function handleFaqAudioEnded() {
+    setIsFaqReading(false);
+    captureFaqMetric("faq_audio_completed", true);
+    trackAnalyticsEvent("interaction", "faq_audio_completed", {
+      faqId: faqVisitRef.current?.faqId || activeFaqId,
+    });
+  }
+
+  function handleFaqAudioPause() {
+    setIsFaqReading(false);
+    const faqAudio = faqAudioRef.current;
+    if (!faqAudio || faqAudio.ended || faqAudio.currentTime <= 0) {
+      return;
+    }
+    captureFaqMetric("faq_audio_paused", false);
+    trackAnalyticsEvent("interaction", "faq_audio_paused", {
+      faqId: faqVisitRef.current?.faqId || activeFaqId,
+      currentTime: faqAudio.currentTime,
+    });
   }
 
   function handleSubscribeAnswer(question: SubscribeQuestion, answer: string) {
+    trackAnalyticsEvent("interaction", "subscribe_question_answered", {
+      questionId: question.id,
+      question: question.question,
+      answer,
+      step: subscribeStep,
+    });
     setSubscribeForm((previous) => {
       const next = { ...previous, [question.id]: answer };
       const nextStep = (subscribeStep ?? 1) + 1;
@@ -933,12 +1229,27 @@ export const ClientApp: React.FC = () => {
       console.warn("Could not store subscribe lead locally", error);
     }
     setSubscribeStep(SUBSCRIBE_QUESTIONS.length + 1);
+    trackAnalyticsEvent("interaction", "subscribe_lead_completed", {
+      interest: lead.interest,
+      timing: lead.timing,
+      firstUpdate: lead.firstUpdate,
+      hasEmail: Boolean(lead.email),
+      hasPhone: Boolean(lead.phone),
+    });
 
     try {
       const response = await fetch("/api/subscribe-lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(lead),
+        body: JSON.stringify({
+          ...lead,
+          inviteId: inviteIdentityRef.current?.inviteId || "",
+          inviteeName: inviteIdentityRef.current?.inviteeName || "",
+          inviteeEmail: inviteIdentityRef.current?.inviteeEmail || "",
+          inviteePhone: inviteIdentityRef.current?.inviteePhone || "",
+          campaign: inviteIdentityRef.current?.campaign || "",
+          source: inviteIdentityRef.current?.source || "",
+        }),
       });
       if (!response.ok) {
         const data = await response.json().catch(() => ({} as Record<string, unknown>));
@@ -951,6 +1262,9 @@ export const ClientApp: React.FC = () => {
 
   function goBackSubscribeStep() {
     setSubscribeError("");
+    trackAnalyticsEvent("interaction", "subscribe_back_clicked", {
+      step: subscribeStep,
+    });
     setSubscribeStep((previous) => {
       if (previous === null || previous <= 0) {
         return null;
@@ -967,6 +1281,9 @@ export const ClientApp: React.FC = () => {
     const video = videoRef.current;
     if (audio.paused) {
       setIsNarratorPaused(false);
+      trackAnalyticsEvent("interaction", "narrator_resumed", {
+        elapsedSeconds: audio.currentTime,
+      });
       void audio.play().catch((error) => {
         if (isInterruptedMediaPlayError(error)) {
           return;
@@ -979,6 +1296,9 @@ export const ClientApp: React.FC = () => {
       audio.pause();
       video?.pause();
       setIsNarratorPaused(true);
+      trackAnalyticsEvent("interaction", "narrator_paused", {
+        elapsedSeconds: audio.currentTime,
+      });
     }
   }
 
@@ -1284,6 +1604,10 @@ export const ClientApp: React.FC = () => {
     liveQuestionActiveRef.current = false;
     setLivePhase("unavailable");
     setUiError(message);
+    trackAnalyticsEvent("interaction", "live_failure", {
+      message,
+      question: userTranscriptRef.current.trim(),
+    });
     window.setTimeout(resumeNarratorAfterLive, 180);
   }
 
@@ -1406,6 +1730,17 @@ export const ClientApp: React.FC = () => {
       await scheduleLiveAudioPlayback(message, pendingBotTranscriptRef.current);
     }
     if (message.serverContent?.turnComplete || message.serverContent?.generationComplete) {
+      const answer = fullBotTranscriptRef.current.trim();
+      const question = lastPersistedQuestionRef.current.trim() || userTranscriptRef.current.trim();
+      if (answer && question) {
+        trackAnalyticsEvent("question", "question_answered", {
+          question,
+          answer,
+          source: "gemini_live",
+          elapsedSeconds: audioRef.current?.currentTime || narratorElapsedSeconds,
+        });
+        lastPersistedQuestionRef.current = "";
+      }
       setLivePhase("answering");
       if (!activeLiveSourcesRef.current.size) {
         scheduleNarratorResumeAfterAnswer(900);
@@ -1631,6 +1966,9 @@ export const ClientApp: React.FC = () => {
 
       setIsMicOpen(true);
       setLivePhase("listening");
+      trackAnalyticsEvent("interaction", "mic_opened", {
+        elapsedSeconds: audioRef.current?.currentTime || narratorElapsedSeconds,
+      });
       startLocalSpeechPreview();
     } catch (error) {
       openedStreams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
@@ -1678,9 +2016,21 @@ export const ClientApp: React.FC = () => {
       setLivePhase("idle");
       setBotTtsTranscript("");
       setLiveAnswerText("");
+      trackAnalyticsEvent("interaction", "mic_closed_without_question", {
+        elapsedSeconds: audioRef.current?.currentTime || narratorElapsedSeconds,
+      });
       closeLiveSessionSoon();
       resumeNarratorAfterLive();
       return;
+    }
+    const question = userTranscriptRef.current.trim();
+    if (question) {
+      lastPersistedQuestionRef.current = question;
+      trackAnalyticsEvent("question", "question_asked", {
+        question,
+        source: "live_mic",
+        elapsedSeconds: audioRef.current?.currentTime || narratorElapsedSeconds,
+      });
     }
     setLivePhase("answering");
     liveQuestionActiveRef.current = false;
@@ -1698,6 +2048,9 @@ export const ClientApp: React.FC = () => {
       return;
     }
     if (livePhase === "answering") {
+      trackAnalyticsEvent("interaction", "return_to_walkthrough_clicked", {
+        answerText: liveAnswerText,
+      });
       returnToWalkthrough();
       return;
     }
@@ -1705,6 +2058,9 @@ export const ClientApp: React.FC = () => {
       void handleCloseMic();
       return;
     }
+    trackAnalyticsEvent("interaction", "ask_question_clicked", {
+      elapsedSeconds: audioRef.current?.currentTime || narratorElapsedSeconds,
+    });
     void handleOpenMic();
   }
 
@@ -1771,8 +2127,8 @@ export const ClientApp: React.FC = () => {
       <audio
         ref={faqAudioRef}
         preload="metadata"
-        onEnded={() => setIsFaqReading(false)}
-        onPause={() => setIsFaqReading(false)}
+        onEnded={handleFaqAudioEnded}
+        onPause={handleFaqAudioPause}
       />
 
       <section
@@ -1950,7 +2306,12 @@ export const ClientApp: React.FC = () => {
                   href={TRIAL_STAY_URL}
                   target="_blank"
                   rel="noreferrer"
-                  onClick={pauseWalkthroughMedia}
+                  onClick={() => {
+                    trackAnalyticsEvent("interaction", "trial_stay_clicked", {
+                      url: TRIAL_STAY_URL,
+                    });
+                    pauseWalkthroughMedia();
+                  }}
                 >
                   Take a trial stay
                 </a>

@@ -1,28 +1,101 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerEnv } from "@/lib/server-env";
+import {
+  findInviteByPasscode,
+  findInviteByToken,
+  getInviteCookieValue,
+  markInviteUsed,
+  parseInviteCookieValue,
+  type InviteIdentity,
+} from "../../../lib/invites";
 
 const ACCESS_COOKIE = "beforest_presentation_access";
+const INVITE_COOKIE = "beforest_invite_identity";
 
 function hasAccessCookie(request: NextRequest) {
   return request.cookies.get(ACCESS_COOKIE)?.value === "granted";
 }
 
+function getInviteFromCookie(request: NextRequest) {
+  return parseInviteCookieValue(request.cookies.get(INVITE_COOKIE)?.value);
+}
+
+function setAccessCookies(response: NextResponse, invite?: InviteIdentity | null) {
+  response.cookies.set({
+    name: ACCESS_COOKIE,
+    value: "granted",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  if (invite) {
+    response.cookies.set({
+      name: INVITE_COOKIE,
+      value: getInviteCookieValue(invite),
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 90,
+    });
+  }
+}
+
+function accessResponse(body: Record<string, unknown>, invite?: InviteIdentity | null) {
+  const response = NextResponse.json({
+    ...body,
+    invite: invite || null,
+  });
+  if (body.authorized) {
+    setAccessCookies(response, invite);
+  }
+  return response;
+}
+
 export async function GET(request: NextRequest) {
   const passcode = getServerEnv("PRESENTATION_PASSCODE")?.trim() || "";
-  return NextResponse.json({
+  const inviteToken = request.nextUrl.searchParams.get("invite")?.trim() || "";
+  const inviteFromCookie = getInviteFromCookie(request);
+
+  if (inviteToken) {
+    const invite = await findInviteByToken(inviteToken).catch((error) => {
+      console.error("Invite token lookup failed", error);
+      return null;
+    });
+    if (invite) {
+      await markInviteUsed(invite);
+      return accessResponse({ requiresPasscode: Boolean(passcode), authorized: true }, invite);
+    }
+  }
+
+  const authorized = !passcode || hasAccessCookie(request);
+  return accessResponse({
     requiresPasscode: Boolean(passcode),
-    authorized: !passcode || hasAccessCookie(request),
-  });
+    authorized,
+  }, inviteFromCookie);
 }
 
 export async function POST(request: NextRequest) {
   const passcode = getServerEnv("PRESENTATION_PASSCODE")?.trim() || "";
-  if (!passcode) {
-    return NextResponse.json({ authorized: true, requiresPasscode: false });
-  }
-
   const body = await request.json().catch(() => ({}));
   const submittedPasscode = typeof body?.passcode === "string" ? body.passcode.trim() : "";
+  const invite = submittedPasscode
+    ? await findInviteByPasscode(submittedPasscode).catch((error) => {
+        console.error("Invite passcode lookup failed", error);
+        return null;
+      })
+    : null;
+
+  if (invite) {
+    await markInviteUsed(invite);
+    return accessResponse({ authorized: true, requiresPasscode: Boolean(passcode) }, invite);
+  }
+
+  if (!passcode) {
+    return accessResponse({ authorized: true, requiresPasscode: false }, getInviteFromCookie(request));
+  }
 
   if (!submittedPasscode || submittedPasscode !== passcode) {
     return NextResponse.json(
@@ -31,15 +104,5 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const response = NextResponse.json({ authorized: true, requiresPasscode: true });
-  response.cookies.set({
-    name: ACCESS_COOKIE,
-    value: "granted",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 8,
-  });
-  return response;
+  return accessResponse({ authorized: true, requiresPasscode: true }, getInviteFromCookie(request));
 }

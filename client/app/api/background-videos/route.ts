@@ -7,7 +7,11 @@ const FALLBACK_VIDEOS = ["/videos/beforest-10-percent-live-720.mp4"];
 const FALLBACK_VIDEO_FILENAMES = new Set(FALLBACK_VIDEOS.map((video) => path.basename(video)));
 const SUPPORTED_VIDEO_EXTENSIONS = new Set([".mp4", ".webm"]);
 const OPTIMIZED_VIDEO_PATTERN = /-optimized\.(mp4|webm)$/i;
-const PLAYLIST_EXCLUDED_VIDEO_FILENAMES = new Set(["final-slide-video-optimized.mp4"]);
+const PLAYLIST_EXCLUDED_VIDEO_FILENAMES = new Set([
+  "final-slide-video-optimized.mp4",
+  "IMG_0928-optimized.mp4",
+  "IMG_0928-720.mp4",
+]);
 
 export async function GET() {
   try {

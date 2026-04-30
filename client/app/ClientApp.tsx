@@ -170,6 +170,9 @@ const VIDEO_AMBIENT_VOLUME = 0.09;
 const VIDEO_AMBIENT_DUCKED_VOLUME = 0.035;
 const VIDEO_CROSSFADE_SECONDS = 0.9;
 const VIDEO_CROSSFADE_CLEANUP_MS = 950;
+const NARRATION_VOLUME = 1;
+const FAQ_VOLUME = 1;
+const AUDIO_FADE_MS = 420;
 const SUBTITLE_LEAD_SECONDS = 0.3;
 const AMBIENT_GAIN = 0;
 const AMBIENT_DUCKED_GAIN = 0;
@@ -415,6 +418,11 @@ export const ClientApp: React.FC = () => {
   const shouldResumeNarratorRef = useRef(false);
   const activeNarrationAudioUrlRef = useRef<string | null>(null);
   const initialNarrationStartPromiseRef = useRef<Promise<void> | null>(null);
+  const narrationFadeFrameRef = useRef<number | null>(null);
+  const faqFadeFrameRef = useRef<number | null>(null);
+  const shouldResumeNarrationAfterFaqRef = useRef(false);
+  const suppressFaqPauseMetricRef = useRef(false);
+  const isFaqEndingFadeStartedRef = useRef(false);
   const ambientStartPromiseRef = useRef<Promise<void> | null>(null);
   const imagesRef = useRef<BeforestVisual[]>([]);
   const knowledgeRef = useRef<KnowledgeChunk[]>([]);
@@ -502,6 +510,23 @@ export const ClientApp: React.FC = () => {
   const activeBackgroundVideoUrl = backgroundVideoSlots[activeVideoSlot] || FALLBACK_BACKGROUND_VIDEO_URL;
   const isLastSlideVideoActive = lastSlideVideoPhase === "playing"
     && activeBackgroundVideoUrl === LAST_SLIDE_BACKGROUND_VIDEO_URL;
+  const narrationProgressPercent = useMemo(() => {
+    if (!isPresentationStarted) {
+      return 0;
+    }
+    const currentIndex = NARRATION_CHUNKS.findIndex((chunk) => chunk.id === currentChunk.id);
+    const completedSeconds = NARRATION_CHUNKS
+      .slice(0, Math.max(0, currentIndex))
+      .reduce((total, chunk) => total + chunk.durationSeconds, 0);
+    const totalSeconds = NARRATION_CHUNKS.reduce((total, chunk) => total + chunk.durationSeconds, 0);
+    const currentElapsedSeconds = Math.min(
+      Math.max(narratorElapsedSeconds, 0),
+      currentChunk.durationSeconds,
+    );
+    return totalSeconds > 0
+      ? Math.min(100, ((completedSeconds + currentElapsedSeconds) / totalSeconds) * 100)
+      : 0;
+  }, [currentChunk, isPresentationStarted, narratorElapsedSeconds]);
 
   function getAnalyticsSessionId() {
     if (!analyticsSessionIdRef.current) {
@@ -610,6 +635,7 @@ export const ClientApp: React.FC = () => {
       audio.load();
     }
     audio.currentTime = 0;
+    audio.volume = NARRATION_VOLUME;
     activeNarrationAudioUrlRef.current = chunk.audioUrl;
     prepareNarrationCue(chunk);
     setIsNarratorPaused(false);
@@ -648,6 +674,40 @@ export const ClientApp: React.FC = () => {
       inactiveVideo.muted = true;
     }
   }, [activeVideoSlot, inactiveVideoSlot]);
+
+  function cancelAudioFade(frameRef: React.MutableRefObject<number | null>) {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+  }
+
+  function fadeAudioElement(
+    audio: HTMLAudioElement,
+    targetVolume: number,
+    durationMs: number,
+    frameRef: React.MutableRefObject<number | null>,
+    onComplete?: () => void,
+  ) {
+    cancelAudioFade(frameRef);
+    const fromVolume = Number.isFinite(audio.volume) ? audio.volume : targetVolume;
+    const startedAt = window.performance.now();
+    const nextVolume = Math.max(0, Math.min(1, targetVolume));
+
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / durationMs);
+      audio.volume = fromVolume + ((nextVolume - fromVolume) * progress);
+      if (progress < 1) {
+        frameRef.current = window.requestAnimationFrame(step);
+        return;
+      }
+      frameRef.current = null;
+      audio.volume = nextVolume;
+      onComplete?.();
+    };
+
+    frameRef.current = window.requestAnimationFrame(step);
+  }
 
   useEffect(() => {
     const activeLiveSources = activeLiveSourcesRef.current;
@@ -704,8 +764,16 @@ export const ClientApp: React.FC = () => {
       })
       .catch(() => undefined);
 
+    const faqAudioForCleanup = faqAudioRef.current;
     return () => {
-      stopFaqReading();
+      cancelAudioFade(narrationFadeFrameRef);
+      cancelAudioFade(faqFadeFrameRef);
+      const faqAudio = faqAudioForCleanup;
+      if (faqAudio) {
+        faqAudio.pause();
+        faqAudio.removeAttribute("src");
+        faqAudio.load();
+      }
       stopAmbientBed();
       stopLocalSpeechPreview();
       const recorder = recorderRef.current;
@@ -1277,11 +1345,6 @@ export const ClientApp: React.FC = () => {
   }
 
   function openFaqModal(faq: PreparedFaq = PREPARED_FAQS[0]) {
-    const audio = audioRef.current;
-    if (audio && !audio.paused) {
-      audio.pause();
-      setIsNarratorPaused(true);
-    }
     setUiError(null);
     setActiveFaqId(faq.id);
     faqVisitRef.current = {
@@ -1297,8 +1360,12 @@ export const ClientApp: React.FC = () => {
   }
 
   function closeFaqModal() {
+    const wasFaqReading = isFaqReading;
     stopFaqReading();
     setActiveFaqId(null);
+    if (wasFaqReading) {
+      resumeNarrationAfterFaqAnswer();
+    }
     captureFaqMetric("faq_closed", false);
     trackAnalyticsEvent("interaction", "faq_closed", {
       faqId: activeFaqId,
@@ -1307,11 +1374,47 @@ export const ClientApp: React.FC = () => {
 
   function stopFaqReading() {
     const faqAudio = faqAudioRef.current;
+    cancelAudioFade(faqFadeFrameRef);
     if (faqAudio) {
+      suppressFaqPauseMetricRef.current = true;
       faqAudio.pause();
       faqAudio.currentTime = 0;
+      faqAudio.volume = FAQ_VOLUME;
     }
+    isFaqEndingFadeStartedRef.current = false;
     setIsFaqReading(false);
+  }
+
+  function pauseNarrationForFaqAnswer() {
+    const audio = audioRef.current;
+    if (!audio || audio.paused) {
+      shouldResumeNarrationAfterFaqRef.current = false;
+      return;
+    }
+    shouldResumeNarrationAfterFaqRef.current = true;
+    fadeAudioElement(audio, 0, AUDIO_FADE_MS, narrationFadeFrameRef, () => {
+      audio.pause();
+      audio.volume = NARRATION_VOLUME;
+      setIsNarratorPaused(true);
+    });
+  }
+
+  function resumeNarrationAfterFaqAnswer() {
+    const audio = audioRef.current;
+    if (!audio || !shouldResumeNarrationAfterFaqRef.current || !isPresentationStarted) {
+      shouldResumeNarrationAfterFaqRef.current = false;
+      return;
+    }
+    shouldResumeNarrationAfterFaqRef.current = false;
+    cancelAudioFade(narrationFadeFrameRef);
+    audio.volume = 0;
+    void audio.play().then(() => {
+      setIsNarratorPaused(false);
+      fadeAudioElement(audio, NARRATION_VOLUME, AUDIO_FADE_MS, narrationFadeFrameRef);
+    }).catch(() => {
+      audio.volume = NARRATION_VOLUME;
+      setIsNarratorPaused(true);
+    });
   }
 
   function playFaqAnswer(faq: PreparedFaq) {
@@ -1320,9 +1423,14 @@ export const ClientApp: React.FC = () => {
       setUiError("FAQ audio is not ready yet. You can still read the answer here.");
       return;
     }
+    pauseNarrationForFaqAnswer();
+    cancelAudioFade(faqFadeFrameRef);
+    suppressFaqPauseMetricRef.current = true;
     faqAudio.pause();
     faqAudio.src = faq.audioUrl;
     faqAudio.currentTime = 0;
+    faqAudio.volume = 0;
+    isFaqEndingFadeStartedRef.current = false;
     setIsFaqReading(true);
     if (faqVisitRef.current?.faqId === faq.id) {
       faqVisitRef.current.audioStartedAt = new Date().toISOString();
@@ -1331,8 +1439,13 @@ export const ClientApp: React.FC = () => {
       faqId: faq.id,
       question: faq.question,
     });
-    void faqAudio.play().catch(() => {
+    void faqAudio.play().then(() => {
+      suppressFaqPauseMetricRef.current = false;
+      fadeAudioElement(faqAudio, FAQ_VOLUME, AUDIO_FADE_MS, faqFadeFrameRef);
+    }).catch(() => {
       setIsFaqReading(false);
+      suppressFaqPauseMetricRef.current = false;
+      resumeNarrationAfterFaqAnswer();
       setUiError("FAQ audio could not play in this browser session. You can still read the answer here.");
     });
   }
@@ -1364,7 +1477,10 @@ export const ClientApp: React.FC = () => {
   }
 
   function handleFaqAudioEnded() {
+    cancelAudioFade(faqFadeFrameRef);
+    isFaqEndingFadeStartedRef.current = false;
     setIsFaqReading(false);
+    resumeNarrationAfterFaqAnswer();
     captureFaqMetric("faq_audio_completed", true);
     trackAnalyticsEvent("interaction", "faq_audio_completed", {
       faqId: faqVisitRef.current?.faqId || activeFaqId,
@@ -1373,6 +1489,10 @@ export const ClientApp: React.FC = () => {
 
   function handleFaqAudioPause() {
     setIsFaqReading(false);
+    if (suppressFaqPauseMetricRef.current) {
+      suppressFaqPauseMetricRef.current = false;
+      return;
+    }
     const faqAudio = faqAudioRef.current;
     if (!faqAudio || faqAudio.ended || faqAudio.currentTime <= 0) {
       return;
@@ -1382,6 +1502,22 @@ export const ClientApp: React.FC = () => {
       faqId: faqVisitRef.current?.faqId || activeFaqId,
       currentTime: faqAudio.currentTime,
     });
+  }
+
+  function handleFaqAudioTimeUpdate() {
+    const faqAudio = faqAudioRef.current;
+    if (
+      !faqAudio
+      || isFaqEndingFadeStartedRef.current
+      || !Number.isFinite(faqAudio.duration)
+      || faqAudio.duration <= 0
+    ) {
+      return;
+    }
+    if (faqAudio.duration - faqAudio.currentTime <= AUDIO_FADE_MS / 1000) {
+      isFaqEndingFadeStartedRef.current = true;
+      fadeAudioElement(faqAudio, 0, AUDIO_FADE_MS, faqFadeFrameRef);
+    }
   }
 
   function handleSubscribeAnswer(question: SubscribeQuestion, answer: string) {
@@ -2312,6 +2448,7 @@ export const ClientApp: React.FC = () => {
       <audio
         ref={faqAudioRef}
         preload="metadata"
+        onTimeUpdate={handleFaqAudioTimeUpdate}
         onEnded={handleFaqAudioEnded}
         onPause={handleFaqAudioPause}
       />
@@ -2361,6 +2498,9 @@ export const ClientApp: React.FC = () => {
         </video>
 
         <div className="beforest-story__scrim" aria-hidden="true" />
+        <div className="beforest-story-progress" aria-hidden="true">
+          <span style={{ transform: `scaleX(${narrationProgressPercent / 100})` }} />
+        </div>
 
         <div className="beforest-story__overlay">
           <header key={currentChunk.id} className="beforest-heading" aria-live="polite">

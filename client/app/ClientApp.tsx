@@ -163,6 +163,7 @@ const TRIAL_STAY_URL = "https://hospitality.beforest.co";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 const FALLBACK_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
+const LAST_SLIDE_BACKGROUND_VIDEO_URL = "/videos/final-slide-video-optimized.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
 const SUPPORTED_BACKGROUND_VIDEO_PATTERN = /\.(mp4|webm)$/i;
 const VIDEO_AMBIENT_VOLUME = 0.09;
@@ -375,6 +376,7 @@ export const ClientApp: React.FC = () => {
     FALLBACK_BACKGROUND_VIDEO_URL,
     FALLBACK_BACKGROUND_VIDEO_URL,
   ]);
+  const [lastSlideVideoPhase, setLastSlideVideoPhase] = useState<"idle" | "playing" | "played">("idle");
   const [subscribeForm, setSubscribeForm] = useState<SubscribeForm>({
     name: "",
     email: "",
@@ -498,6 +500,8 @@ export const ClientApp: React.FC = () => {
   const shouldDuckAmbient = isLiveFocus || Boolean(activeFaq) || subscribeStep !== null;
   const inactiveVideoSlot = activeVideoSlot === 0 ? 1 : 0;
   const activeBackgroundVideoUrl = backgroundVideoSlots[activeVideoSlot] || FALLBACK_BACKGROUND_VIDEO_URL;
+  const isLastSlideVideoActive = lastSlideVideoPhase === "playing"
+    && activeBackgroundVideoUrl === LAST_SLIDE_BACKGROUND_VIDEO_URL;
 
   function getAnalyticsSessionId() {
     if (!analyticsSessionIdRef.current) {
@@ -792,6 +796,53 @@ export const ClientApp: React.FC = () => {
   }, [backgroundVideoSlots, configureBackgroundVideo, inactiveVideoSlot]);
 
   useEffect(() => {
+    if (currentChunk.id !== "decision_close") {
+      setLastSlideVideoPhase("idle");
+      return;
+    }
+    if (lastSlideVideoPhase !== "idle") {
+      return;
+    }
+    const outgoingSlot = activeVideoSlot;
+    const incomingSlot = inactiveVideoSlot as 0 | 1;
+    const outgoingVideo = outgoingSlot === 0 ? videoRef.current : nextVideoRef.current;
+    const incomingVideo = incomingSlot === 0 ? videoRef.current : nextVideoRef.current;
+
+    isBackgroundVideoTransitioningRef.current = true;
+    setLastSlideVideoPhase("playing");
+    setBackgroundVideoSlots((previous) => {
+      const nextSlots: [string, string] = [...previous] as [string, string];
+      nextSlots[incomingSlot] = LAST_SLIDE_BACKGROUND_VIDEO_URL;
+      return nextSlots;
+    });
+
+    window.setTimeout(() => {
+      if (incomingVideo) {
+        configureBackgroundVideo(incomingVideo, isPresentationStarted);
+        incomingVideo.load();
+        incomingVideo.currentTime = 0;
+        void incomingVideo.play().catch(() => undefined);
+      }
+      setActiveVideoSlot(incomingSlot);
+
+      window.setTimeout(() => {
+        if (outgoingVideo) {
+          outgoingVideo.pause();
+          outgoingVideo.currentTime = 0;
+        }
+        isBackgroundVideoTransitioningRef.current = false;
+      }, VIDEO_CROSSFADE_CLEANUP_MS);
+    }, 80);
+  }, [
+    activeVideoSlot,
+    configureBackgroundVideo,
+    currentChunk.id,
+    inactiveVideoSlot,
+    isPresentationStarted,
+    lastSlideVideoPhase,
+  ]);
+
+  useEffect(() => {
     const nextChunk = getNextNarrationChunk(currentChunk.id);
     if (!nextChunk) {
       preloadedNarrationAudioRef.current = null;
@@ -1032,6 +1083,47 @@ export const ClientApp: React.FC = () => {
       videoIndex: backgroundVideoIndex,
       reason,
     });
+    if (isLastSlideVideoActive) {
+      const nextIndex = backgroundVideoIndex % backgroundVideos.length;
+      const preloadIndex = (nextIndex + 1) % backgroundVideos.length;
+      const outgoingSlot = activeVideoSlot;
+      const incomingSlot = inactiveVideoSlot as 0 | 1;
+      const outgoingVideo = outgoingSlot === 0 ? videoRef.current : nextVideoRef.current;
+      const incomingVideo = incomingSlot === 0 ? videoRef.current : nextVideoRef.current;
+
+      isBackgroundVideoTransitioningRef.current = true;
+      setBackgroundVideoSlots((previous) => {
+        const nextSlots: [string, string] = [...previous] as [string, string];
+        nextSlots[incomingSlot] = backgroundVideos[nextIndex] || FALLBACK_BACKGROUND_VIDEO_URL;
+        return nextSlots;
+      });
+
+      window.setTimeout(() => {
+        if (incomingVideo) {
+          configureBackgroundVideo(incomingVideo, isPresentationStarted);
+          incomingVideo.load();
+          incomingVideo.currentTime = 0;
+          void incomingVideo.play().catch(() => undefined);
+        }
+        setLastSlideVideoPhase("played");
+        setActiveVideoSlot(incomingSlot);
+        setBackgroundVideoIndex(nextIndex);
+
+        window.setTimeout(() => {
+          if (outgoingVideo) {
+            outgoingVideo.pause();
+            outgoingVideo.currentTime = 0;
+          }
+          setBackgroundVideoSlots((previous) => {
+            const nextSlots: [string, string] = [...previous] as [string, string];
+            nextSlots[outgoingSlot] = backgroundVideos[preloadIndex] || FALLBACK_BACKGROUND_VIDEO_URL;
+            return nextSlots;
+          });
+          isBackgroundVideoTransitioningRef.current = false;
+        }, VIDEO_CROSSFADE_CLEANUP_MS);
+      }, 80);
+      return;
+    }
     if (backgroundVideos.length <= 1) {
       const video = activeVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
       if (video) {

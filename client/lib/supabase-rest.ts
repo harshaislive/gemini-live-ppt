@@ -1,6 +1,6 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
-import { getServerEnv } from "./server-env";
+import { getServerEnv } from "@/lib/server-env";
 
 type SupabaseInsertResult = {
   captured: boolean;

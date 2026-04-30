@@ -20,6 +20,21 @@ function getInviteFromCookie(request: NextRequest) {
   return parseInviteCookieValue(request.cookies.get(INVITE_COOKIE)?.value);
 }
 
+function getSlugInvite(token: string): InviteIdentity | null {
+  const inviteId = token.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 120);
+  if (!inviteId) {
+    return null;
+  }
+  return {
+    inviteId,
+    inviteeName: "",
+    inviteeEmail: "",
+    inviteePhone: "",
+    campaign: "",
+    source: "url_slug",
+  };
+}
+
 function setAccessCookies(response: NextResponse, invite?: InviteIdentity | null) {
   response.cookies.set({
     name: ACCESS_COOKIE,
@@ -61,12 +76,17 @@ export async function GET(request: NextRequest) {
 
   if (inviteToken) {
     const invite = await findInviteByToken(inviteToken).catch((error) => {
-      console.error("Invite token lookup failed", error);
+      console.warn("Invite token lookup failed; falling back to URL slug tracking", error);
       return null;
-    });
-    if (invite) {
+    }) || getSlugInvite(inviteToken);
+    if (invite && invite.source !== "url_slug") {
       await markInviteUsed(invite);
-      return accessResponse({ requiresPasscode: Boolean(passcode), authorized: true }, invite);
+    }
+    if (invite) {
+      return accessResponse({
+        requiresPasscode: Boolean(passcode),
+        authorized: invite.source === "url_slug" ? (!passcode || hasAccessCookie(request)) : true,
+      }, invite);
     }
   }
 

@@ -2829,4 +2829,269 @@ a:focus-visible {
     width: min(100%, 24rem);
     max-height: calc(100% - 36px);
   }
+
+  .beforest-status {
+    padding: 6px 9px;
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+  }
+
+  .beforest-inline-error {
+    padding: 8px 10px;
+    font-size: 0.68rem;
+    line-height: 1.36;
+  }
+
+  .beforest-subtitle,
+  .beforest-subtitle.is-live,
+  .beforest-subtitle.is-tracked {
+    width: min(100%, 20rem);
+    min-height: unset;
+    font-size: clamp(0.7rem, 1.55vh, 0.78rem);
+    line-height: 1.3;
+    letter-spacing: 0;
+    white-space: normal;
+  }
+
+  .beforest-subtitle.is-tracked {
+    gap: 0.18rem;
+  }
+
+  .beforest-bottom-ui {
+    gap: 10px;
+  }
+
+  .beforest-action-row {
+    gap: 8px;
+  }
+
+  .beforest-mic-button {
+    min-width: 13rem;
+    height: 54px;
+    padding: 0 16px 0 8px;
+    gap: 9px;
+  }
+
+  .beforest-mic-button__ring {
+    inset: -7px;
+  }
+
+  .beforest-mic-button__surface {
+    width: 42px;
+    height: 42px;
+  }
+
+  .beforest-mic-button__surface svg,
+  .beforest-secondary-action svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .beforest-action-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+  }
+
+  .beforest-secondary-action {
+    min-height: 54px;
+    padding: 0 14px;
+    font-size: 0.72rem;
+  }
+
+  .beforest-mic-hint {
+    max-width: 18rem;
+    font-size: 0.62rem;
+    line-height: 1.32;
+    letter-spacing: 0.01em;
+  }
+
+  .beforest-access-card {
+    width: min(100%, 22rem);
+    gap: 8px;
+    padding: 8px;
+    border-radius: 14px;
+  }
+
+  .beforest-access-input,
+  .beforest-access-button {
+    min-height: 2.45rem;
+    padding-inline: 12px;
+    border-radius: 10px;
+    font-size: 0.76rem;
+  }
+
+  .beforest-cta-card {
+    width: min(100%, 21rem);
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .beforest-cta-eyebrow {
+    font-size: 0.58rem;
+    letter-spacing: 0.12em;
+  }
+
+  .beforest-cta-title {
+    font-size: clamp(0.96rem, 2.2vh, 1.14rem);
+    line-height: 1.16;
+    letter-spacing: 0;
+  }
+
+  .beforest-cta-button {
+    min-height: 2.35rem;
+    padding-inline: 14px;
+    font-size: 0.72rem;
+  }
+
+  .beforest-live-answer {
+    width: calc(100% - 38px);
+    padding: 12px;
+    border-radius: 16px;
+    max-height: 44%;
+  }
+
+  .beforest-live-answer__meta {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+  }
+
+  .beforest-live-answer__text {
+    max-height: calc(36dvh - 78px);
+    font-size: 0.76rem;
+    line-height: 1.42;
+  }
+
+  .beforest-question-backdrop {
+    padding: 14px;
+  }
+
+  .beforest-question-modal {
+    width: min(100%, 21.5rem);
+    max-height: calc(100% - 28px);
+    padding: 18px 14px 14px;
+    border-radius: 18px;
+  }
+
+  .beforest-question-eyebrow,
+  .beforest-question-modal .beforest-question-eyebrow {
+    font-size: 0.56rem;
+    letter-spacing: 0.12em;
+  }
+
+  .beforest-question-modal h2,
+  .beforest-faq-modal__top h2 {
+    margin-top: 9px;
+    font-size: clamp(1.18rem, 3vh, 1.48rem);
+    line-height: 1.04;
+    letter-spacing: 0;
+  }
+
+  .beforest-question-context {
+    margin-top: 10px;
+    font-size: 0.74rem;
+    line-height: 1.42;
+  }
+
+  .beforest-question-options {
+    gap: 7px;
+    margin-top: 14px;
+  }
+
+  .beforest-question-options button,
+  .beforest-question-skip,
+  .beforest-subscribe-next {
+    min-height: 2.25rem;
+    padding-inline: 12px;
+    font-size: 0.72rem;
+  }
+
+  .beforest-question-actions {
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .beforest-faq-trigger {
+    right: 16px;
+    bottom: 16px;
+    min-height: 2.25rem;
+    padding-inline: 12px;
+    font-size: 0.66rem;
+  }
+
+  .beforest-faq-modal,
+  .beforest-subscribe-modal {
+    width: min(100%, 21.75rem);
+  }
+
+  .beforest-faq-modal__top {
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .beforest-faq-close {
+    width: 34px;
+    height: 34px;
+  }
+
+  .beforest-faq-layout {
+    gap: 10px;
+  }
+
+  .beforest-faq-list {
+    gap: 6px;
+  }
+
+  .beforest-faq-list button,
+  .beforest-faq-answer__scroll p,
+  .beforest-faq-answer__footer span {
+    font-size: 0.7rem;
+    line-height: 1.4;
+  }
+
+  .beforest-faq-answer {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .beforest-faq-answer__header span {
+    font-size: 0.56rem;
+    letter-spacing: 0.12em;
+  }
+
+  .beforest-faq-answer h3 {
+    font-size: 0.9rem;
+    line-height: 1.18;
+  }
+
+  .beforest-faq-play {
+    min-height: 2.25rem;
+    padding-inline: 12px;
+    font-size: 0.7rem;
+  }
+
+  .beforest-subscribe-progress {
+    gap: 5px;
+  }
+
+  .beforest-subscribe-progress span {
+    height: 3px;
+  }
+
+  .beforest-subscribe-form,
+  .beforest-subscribe-fields {
+    gap: 8px;
+  }
+
+  .beforest-subscribe-error {
+    padding: 8px 10px;
+    font-size: 0.68rem;
+    line-height: 1.34;
+  }
+
+  .beforest-subscribe-input,
+  .beforest-subscribe-options button {
+    min-height: 2.35rem;
+    padding-inline: 12px;
+    font-size: 0.72rem;
+  }
 }

@@ -167,6 +167,8 @@ const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-post
 const SUPPORTED_BACKGROUND_VIDEO_PATTERN = /\.(mp4|webm)$/i;
 const VIDEO_AMBIENT_VOLUME = 0.09;
 const VIDEO_AMBIENT_DUCKED_VOLUME = 0.035;
+const VIDEO_CROSSFADE_SECONDS = 0.9;
+const VIDEO_CROSSFADE_CLEANUP_MS = 950;
 const SUBTITLE_LEAD_SECONDS = 0.3;
 const AMBIENT_GAIN = 0;
 const AMBIENT_DUCKED_GAIN = 0;
@@ -368,6 +370,11 @@ export const ClientApp: React.FC = () => {
   const [isFaqReading, setIsFaqReading] = useState(false);
   const [backgroundVideos, setBackgroundVideos] = useState<string[]>([FALLBACK_BACKGROUND_VIDEO_URL]);
   const [backgroundVideoIndex, setBackgroundVideoIndex] = useState(0);
+  const [activeVideoSlot, setActiveVideoSlot] = useState<0 | 1>(0);
+  const [backgroundVideoSlots, setBackgroundVideoSlots] = useState<[string, string]>([
+    FALLBACK_BACKGROUND_VIDEO_URL,
+    FALLBACK_BACKGROUND_VIDEO_URL,
+  ]);
   const [subscribeForm, setSubscribeForm] = useState<SubscribeForm>({
     name: "",
     email: "",
@@ -382,6 +389,8 @@ export const ClientApp: React.FC = () => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const faqAudioRef = useRef<HTMLAudioElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const nextVideoRef = useRef<HTMLVideoElement | null>(null);
+  const isBackgroundVideoTransitioningRef = useRef(false);
   const sessionRef = useRef<Session | null>(null);
   const liveConnectPromiseRef = useRef<Promise<Session> | null>(null);
   const liveSocketOpenRef = useRef(false);
@@ -487,7 +496,8 @@ export const ClientApp: React.FC = () => {
     ? PREPARED_FAQS.find((faq) => faq.id === activeFaqId) || PREPARED_FAQS[0]
     : null;
   const shouldDuckAmbient = isLiveFocus || Boolean(activeFaq) || subscribeStep !== null;
-  const activeBackgroundVideoUrl = backgroundVideos[backgroundVideoIndex] || FALLBACK_BACKGROUND_VIDEO_URL;
+  const inactiveVideoSlot = activeVideoSlot === 0 ? 1 : 0;
+  const activeBackgroundVideoUrl = backgroundVideoSlots[activeVideoSlot] || FALLBACK_BACKGROUND_VIDEO_URL;
 
   function getAnalyticsSessionId() {
     if (!analyticsSessionIdRef.current) {
@@ -621,6 +631,20 @@ export const ClientApp: React.FC = () => {
       : 0;
   }, [shouldDuckAmbient]);
 
+  const setVideoAmbientVolume = useCallback((volume: number) => {
+    const activeVideo = activeVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
+    const inactiveVideo = inactiveVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
+    if (!activeVideo) {
+      return;
+    }
+    activeVideo.volume = Math.max(0, Math.min(1, volume));
+    activeVideo.muted = volume <= 0;
+    if (inactiveVideo) {
+      inactiveVideo.volume = 0;
+      inactiveVideo.muted = true;
+    }
+  }, [activeVideoSlot, inactiveVideoSlot]);
+
   useEffect(() => {
     const activeLiveSources = activeLiveSourcesRef.current;
     const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY);
@@ -667,6 +691,11 @@ export const ClientApp: React.FC = () => {
         if (videos.length) {
           setBackgroundVideos(videos);
           setBackgroundVideoIndex(0);
+          setActiveVideoSlot(0);
+          setBackgroundVideoSlots([
+            videos[0] || FALLBACK_BACKGROUND_VIDEO_URL,
+            videos[1] || videos[0] || FALLBACK_BACKGROUND_VIDEO_URL,
+          ]);
         }
       })
       .catch(() => undefined);
@@ -719,7 +748,7 @@ export const ClientApp: React.FC = () => {
     }
     setAmbientGain(shouldDuckAmbient ? AMBIENT_DUCKED_GAIN : AMBIENT_GAIN);
     setVideoAmbientVolume(shouldDuckAmbient ? VIDEO_AMBIENT_DUCKED_VOLUME : VIDEO_AMBIENT_VOLUME);
-  }, [isPresentationStarted, shouldDuckAmbient]);
+  }, [isPresentationStarted, setVideoAmbientVolume, shouldDuckAmbient]);
 
   useEffect(() => {
     const sectionVisual = imagesRef.current.find((image) => image.id === currentChunk.visualId);
@@ -739,16 +768,28 @@ export const ClientApp: React.FC = () => {
   }, [currentChunk, isPresentationStarted]);
 
   useEffect(() => {
-    const video = videoRef.current;
-    if (!video) {
+    const activeVideo = activeVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
+    if (!activeVideo) {
       return;
     }
-    configureBackgroundVideo(video, isPresentationStarted);
-    video.load();
-    void video.play().catch(() => {
+    configureBackgroundVideo(activeVideo, isPresentationStarted);
+    if (activeVideo.readyState === 0) {
+      activeVideo.load();
+    }
+    void activeVideo.play().catch(() => {
       // iOS may still block media until the first user gesture; the primary button primes it.
     });
-  }, [activeBackgroundVideoUrl, configureBackgroundVideo, isPresentationStarted]);
+  }, [activeBackgroundVideoUrl, activeVideoSlot, configureBackgroundVideo, isPresentationStarted]);
+
+  useEffect(() => {
+    const preloadVideo = inactiveVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
+    if (!preloadVideo) {
+      return;
+    }
+    configureBackgroundVideo(preloadVideo, false);
+    preloadVideo.preload = "auto";
+    preloadVideo.load();
+  }, [backgroundVideoSlots, configureBackgroundVideo, inactiveVideoSlot]);
 
   useEffect(() => {
     const nextChunk = getNextNarrationChunk(currentChunk.id);
@@ -968,39 +1009,86 @@ export const ClientApp: React.FC = () => {
     playNextChunk();
   }
 
-  function setVideoAmbientVolume(volume: number) {
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-    video.volume = Math.max(0, Math.min(1, volume));
-    video.muted = volume <= 0;
-  }
-
   function playBackgroundVideoFromGesture() {
-    const video = videoRef.current;
-    if (!video) {
+    const activeVideo = activeVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
+    const inactiveVideo = inactiveVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
+    if (!activeVideo) {
       return Promise.resolve();
     }
-    configureBackgroundVideo(video, true);
-    return video.play().then(() => undefined);
+    configureBackgroundVideo(activeVideo, true);
+    if (inactiveVideo) {
+      configureBackgroundVideo(inactiveVideo, false);
+      inactiveVideo.load();
+    }
+    return activeVideo.play().then(() => undefined);
   }
 
-  function handleBackgroundVideoEnded() {
+  function advanceBackgroundVideo(reason: "crossfade" | "ended") {
+    if (isBackgroundVideoTransitioningRef.current && backgroundVideos.length > 1) {
+      return;
+    }
     trackAnalyticsEvent("interaction", "background_video_ended", {
       videoUrl: activeBackgroundVideoUrl,
       videoIndex: backgroundVideoIndex,
+      reason,
     });
-    setBackgroundVideoIndex((previous) => (
-      backgroundVideos.length > 1 ? (previous + 1) % backgroundVideos.length : previous
-    ));
     if (backgroundVideos.length <= 1) {
-      const video = videoRef.current;
+      const video = activeVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
       if (video) {
         video.currentTime = 0;
         void video.play().catch(() => undefined);
       }
+      return;
     }
+
+    const outgoingSlot = activeVideoSlot;
+    const incomingSlot = inactiveVideoSlot as 0 | 1;
+    const outgoingVideo = outgoingSlot === 0 ? videoRef.current : nextVideoRef.current;
+    const incomingVideo = incomingSlot === 0 ? videoRef.current : nextVideoRef.current;
+    const nextIndex = (backgroundVideoIndex + 1) % backgroundVideos.length;
+    const preloadIndex = (nextIndex + 1) % backgroundVideos.length;
+
+    isBackgroundVideoTransitioningRef.current = true;
+    if (incomingVideo) {
+      configureBackgroundVideo(incomingVideo, isPresentationStarted);
+      if (incomingVideo.currentTime > 0.2 || incomingVideo.ended) {
+        incomingVideo.currentTime = 0;
+      }
+      void incomingVideo.play().catch(() => undefined);
+    }
+
+    setBackgroundVideoIndex(nextIndex);
+    setActiveVideoSlot(incomingSlot);
+
+    window.setTimeout(() => {
+      if (outgoingVideo) {
+        outgoingVideo.pause();
+        outgoingVideo.currentTime = 0;
+      }
+      setBackgroundVideoSlots((previous) => {
+        const nextSlots: [string, string] = [...previous] as [string, string];
+        nextSlots[outgoingSlot] = backgroundVideos[preloadIndex] || FALLBACK_BACKGROUND_VIDEO_URL;
+        return nextSlots;
+      });
+      isBackgroundVideoTransitioningRef.current = false;
+    }, VIDEO_CROSSFADE_CLEANUP_MS);
+  }
+
+  function handleBackgroundVideoTimeUpdate(slot: 0 | 1) {
+    if (slot !== activeVideoSlot || backgroundVideos.length <= 1 || isBackgroundVideoTransitioningRef.current) {
+      return;
+    }
+    const video = slot === 0 ? videoRef.current : nextVideoRef.current;
+    if (!video || !Number.isFinite(video.duration) || video.duration <= 0) {
+      return;
+    }
+    if (video.duration - video.currentTime <= VIDEO_CROSSFADE_SECONDS) {
+      advanceBackgroundVideo("crossfade");
+    }
+  }
+
+  function handleBackgroundVideoEnded() {
+    advanceBackgroundVideo("ended");
   }
 
   function showGate(gate: NarrationGate) {
@@ -2147,14 +2235,37 @@ export const ClientApp: React.FC = () => {
       >
         <video
           ref={videoRef}
-          className="beforest-story__image beforest-story__video"
+          className={[
+            "beforest-story__image",
+            "beforest-story__video",
+            activeVideoSlot === 0 ? "is-active" : "is-buffering",
+          ].join(" ")}
           poster={CONTINUOUS_BACKGROUND_POSTER_URL}
-          autoPlay
-          muted={!isPresentationStarted}
+          muted={activeVideoSlot !== 0 || !isPresentationStarted}
           playsInline
+          preload="auto"
+          aria-hidden={activeVideoSlot !== 0}
+          onTimeUpdate={() => handleBackgroundVideoTimeUpdate(0)}
           onEnded={handleBackgroundVideoEnded}
         >
-          <source src={activeBackgroundVideoUrl} type={getBackgroundVideoMimeType(activeBackgroundVideoUrl)} />
+          <source src={backgroundVideoSlots[0]} type={getBackgroundVideoMimeType(backgroundVideoSlots[0])} />
+        </video>
+        <video
+          ref={nextVideoRef}
+          className={[
+            "beforest-story__image",
+            "beforest-story__video",
+            activeVideoSlot === 1 ? "is-active" : "is-buffering",
+          ].join(" ")}
+          poster={CONTINUOUS_BACKGROUND_POSTER_URL}
+          muted={activeVideoSlot !== 1 || !isPresentationStarted}
+          playsInline
+          preload="auto"
+          aria-hidden={activeVideoSlot !== 1}
+          onTimeUpdate={() => handleBackgroundVideoTimeUpdate(1)}
+          onEnded={handleBackgroundVideoEnded}
+        >
+          <source src={backgroundVideoSlots[1]} type={getBackgroundVideoMimeType(backgroundVideoSlots[1])} />
         </video>
 
         <div className="beforest-story__scrim" aria-hidden="true" />

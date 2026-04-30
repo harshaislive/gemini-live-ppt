@@ -716,8 +716,18 @@ a:focus-visible {
 .beforest-story__video {
   display: block;
   animation: none;
+  opacity: 0;
   transform: scale(1.02);
-  will-change: auto;
+  transition: opacity 900ms ease;
+  will-change: opacity;
+}
+
+.beforest-story__video.is-active {
+  opacity: 1;
+}
+
+.beforest-story__video.is-buffering {
+  opacity: 0;
 }
 
 .beforest-story__scrim {

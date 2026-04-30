@@ -164,13 +164,18 @@ const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 const FALLBACK_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
 const CONTINUOUS_BACKGROUND_POSTER_URL = "/posters/beforest-10-percent-live-poster.webp";
-const SUPPORTED_BACKGROUND_VIDEO_PATTERN = /\.(mp4|mov|webm)$/i;
+const SUPPORTED_BACKGROUND_VIDEO_PATTERN = /\.(mp4|webm)$/i;
 const VIDEO_AMBIENT_VOLUME = 0.09;
 const VIDEO_AMBIENT_DUCKED_VOLUME = 0.035;
 const SUBTITLE_LEAD_SECONDS = 0.3;
 const AMBIENT_GAIN = 0;
 const AMBIENT_DUCKED_GAIN = 0;
 const LIVE_CONNECT_RETRY_DELAYS_MS = [650, 1400];
+
+function getBackgroundVideoMimeType(videoUrl: string) {
+  return videoUrl.toLowerCase().endsWith(".webm") ? "video/webm" : "video/mp4";
+}
+
 const SUBSCRIBE_QUESTIONS: SubscribeQuestion[] = [
   {
     id: "interest",
@@ -2149,7 +2154,7 @@ export const ClientApp: React.FC = () => {
           playsInline
           onEnded={handleBackgroundVideoEnded}
         >
-          <source src={activeBackgroundVideoUrl} type="video/mp4" />
+          <source src={activeBackgroundVideoUrl} type={getBackgroundVideoMimeType(activeBackgroundVideoUrl)} />
         </video>
 
         <div className="beforest-story__scrim" aria-hidden="true" />

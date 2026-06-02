@@ -35,6 +35,7 @@ import {
 } from "@/lib/gemini-live-utils";
 
 const ENABLE_BETWEEN_SLIDE_PROMPTS = false;
+const ENABLE_LIVE_MIC_QUESTIONS = false;
 
 type AccessState = {
   requiresPasscode: boolean;
@@ -159,7 +160,7 @@ const ANALYTICS_SESSION_STORAGE_KEY = "beforest_analytics_session_id";
 const INVITE_IDENTITY_STORAGE_KEY = "beforest_invite_identity";
 const MODEL = "gemini-2.5-flash-native-audio-preview-12-2025";
 const DEFAULT_VOICE_ID = "Gacrux";
-const TRIAL_STAY_URL = "https://hospitality.beforest.co";
+const TRIAL_STAY_URL = "https://10percent.beforest.co/?trial=booking";
 const GEMINI_TOKEN_REFRESH_BUFFER_MS = 10_000;
 const MIC_WORKLET_URL = "/audio-worklets/mic-pcm-processor.js";
 const FALLBACK_BACKGROUND_VIDEO_URL = "/videos/beforest-10-percent-live-720.mp4";
@@ -344,18 +345,28 @@ function getLiveConnectionError(error: unknown) {
   return getMicrophoneRuntimeError(error);
 }
 
-export const ClientApp: React.FC = () => {
-  const [accessState, setAccessState] = useState<AccessState | null>(null);
-  const [listenerName, setListenerName] = useState("");
-  const [hasConfirmedListener, setHasConfirmedListener] = useState(false);
+type ClientAppProps = {
+  previewChunkId?: NarrationChunkId;
+};
+
+export const ClientApp: React.FC<ClientAppProps> = ({ previewChunkId }) => {
+  const isPreviewMode = Boolean(previewChunkId);
+  const previewChunk = previewChunkId ? getNarrationChunk(previewChunkId) : null;
+  const [accessState, setAccessState] = useState<AccessState | null>(
+    isPreviewMode ? { requiresPasscode: false, authorized: true } : null,
+  );
+  const [listenerName, setListenerName] = useState(isPreviewMode ? "Preview" : "");
+  const [hasConfirmedListener, setHasConfirmedListener] = useState(isPreviewMode);
   const [passcode, setPasscode] = useState("");
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [presentationContext, setPresentationContext] = useState<PresentationContext | null>(null);
   const [geminiToken, setGeminiToken] = useState<GeminiToken | null>(null);
   const [isPreparing, setIsPreparing] = useState(false);
-  const [isPresentationStarted, setIsPresentationStarted] = useState(false);
-  const [isNarratorPaused, setIsNarratorPaused] = useState(false);
-  const [currentChunkId, setCurrentChunkId] = useState<NarrationChunkId>(NARRATION_CHUNKS[0].id);
+  const [isPresentationStarted, setIsPresentationStarted] = useState(isPreviewMode);
+  const [isNarratorPaused, setIsNarratorPaused] = useState(isPreviewMode);
+  const [currentChunkId, setCurrentChunkId] = useState<NarrationChunkId>(
+    previewChunk?.id || NARRATION_CHUNKS[0].id,
+  );
   const [narratorElapsedSeconds, setNarratorElapsedSeconds] = useState(0);
   const [narratorSubtitle, setNarratorSubtitle] = useState("");
   const [completedChunkIds, setCompletedChunkIds] = useState<NarrationChunkId[]>([]);
@@ -479,7 +490,7 @@ export const ClientApp: React.FC = () => {
     if (isPresentationStarted) {
       return narratorSubtitle || getNarrationCaption(currentChunk, narratorElapsedSeconds, currentChunk.durationSeconds);
     }
-    return "Start the presentation. The narrator plays immediately; the mic is only for interruptions.";
+    return "Start the presentation. The narrator plays immediately; prepared voice FAQs remain available at the close.";
   }, [
     accessState,
     botTtsTranscript,
@@ -493,7 +504,10 @@ export const ClientApp: React.FC = () => {
     shouldShowAccessForm,
   ]);
 
-  const showDecisionCta = visual.id === "trial-stay" || visual.id === "art-of-return-hero";
+  const showDecisionCta = currentChunk.visualId === "trial-stay"
+    || currentChunk.visualId === "art-of-return-hero"
+    || visual.id === "trial-stay"
+    || visual.id === "art-of-return-hero";
   const isLiveFocus = isMicOpen || livePhase === "answering";
   const shouldShowDecisionCta = showDecisionCta && !isLiveFocus;
   const shouldTrackNarrationWords = isPresentationStarted && !isLiveFocus && !shouldShowAccessForm && !promptModal;
@@ -711,37 +725,39 @@ export const ClientApp: React.FC = () => {
 
   useEffect(() => {
     const activeLiveSources = activeLiveSourcesRef.current;
-    const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY);
-    if (storedName) {
-      setListenerName(storedName);
-    }
-    const storedInvite = window.localStorage.getItem(INVITE_IDENTITY_STORAGE_KEY);
-    if (storedInvite) {
-      try {
-        inviteIdentityRef.current = JSON.parse(storedInvite) as InviteIdentity;
-      } catch {
-        window.localStorage.removeItem(INVITE_IDENTITY_STORAGE_KEY);
+    if (!isPreviewMode) {
+      const storedName = window.localStorage.getItem(LISTENER_NAME_STORAGE_KEY);
+      if (storedName) {
+        setListenerName(storedName);
       }
-    }
-
-    const inviteToken = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
-    const accessUrl = inviteToken
-      ? `/api/access?invite=${encodeURIComponent(inviteToken)}`
-      : "/api/access";
-
-    fetch(accessUrl, { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data: AccessState) => {
-        if (data.invite?.inviteId) {
-          inviteIdentityRef.current = data.invite;
-          window.localStorage.setItem(INVITE_IDENTITY_STORAGE_KEY, JSON.stringify(data.invite));
-          if (!storedName && data.invite.inviteeName) {
-            setListenerName(data.invite.inviteeName);
-          }
+      const storedInvite = window.localStorage.getItem(INVITE_IDENTITY_STORAGE_KEY);
+      if (storedInvite) {
+        try {
+          inviteIdentityRef.current = JSON.parse(storedInvite) as InviteIdentity;
+        } catch {
+          window.localStorage.removeItem(INVITE_IDENTITY_STORAGE_KEY);
         }
-        setAccessState(data);
-      })
-      .catch(() => setAccessState({ requiresPasscode: true, authorized: false }));
+      }
+
+      const inviteToken = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
+      const accessUrl = inviteToken
+        ? `/api/access?invite=${encodeURIComponent(inviteToken)}`
+        : "/api/access";
+
+      fetch(accessUrl, { cache: "no-store" })
+        .then((response) => response.json())
+        .then((data: AccessState) => {
+          if (data.invite?.inviteId) {
+            inviteIdentityRef.current = data.invite;
+            window.localStorage.setItem(INVITE_IDENTITY_STORAGE_KEY, JSON.stringify(data.invite));
+            if (!storedName && data.invite.inviteeName) {
+              setListenerName(data.invite.inviteeName);
+            }
+          }
+          setAccessState(data);
+        })
+        .catch(() => setAccessState({ requiresPasscode: true, authorized: false }));
+    }
 
     fetch("/api/background-videos", { cache: "no-store" })
       .then((response) => response.json())
@@ -763,6 +779,19 @@ export const ClientApp: React.FC = () => {
         }
       })
       .catch(() => undefined);
+
+    if (isPreviewMode && previewChunk) {
+      fetch("/api/presentation-context", { cache: "no-store" })
+        .then((response) => response.json())
+        .then((data: PresentationContext) => {
+          setPresentationContext(data);
+          imagesRef.current = data.images;
+          knowledgeRef.current = data.knowledgeChunks;
+          const previewVisual = data.images.find((image) => image.id === previewChunk.visualId);
+          setVisual(previewVisual || data.initialVisual);
+        })
+        .catch(() => undefined);
+    }
 
     const faqAudioForCleanup = faqAudioRef.current;
     return () => {
@@ -810,7 +839,7 @@ export const ClientApp: React.FC = () => {
       clearAnswerTimeout();
       clearLiveAnswerResumeTimeout();
     };
-  }, []);
+  }, [isPreviewMode, previewChunk]);
 
   useEffect(() => {
     if (!isPresentationStarted) {
@@ -828,7 +857,7 @@ export const ClientApp: React.FC = () => {
   }, [currentChunk.visualId]);
 
   useEffect(() => {
-    if (!isPresentationStarted) {
+    if (!isPresentationStarted || isPreviewMode) {
       return;
     }
     startSlideVisit(currentChunk);
@@ -837,7 +866,7 @@ export const ClientApp: React.FC = () => {
     };
     // Slide visit boundaries should follow only the active chunk and presentation lifecycle.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentChunk, isPresentationStarted]);
+  }, [currentChunk, isPresentationStarted, isPreviewMode]);
 
   useEffect(() => {
     const activeVideo = activeVideoSlot === 0 ? videoRef.current : nextVideoRef.current;
@@ -932,7 +961,7 @@ export const ClientApp: React.FC = () => {
   }, [currentChunk.id]);
 
   useEffect(() => {
-    if (!isPresentationStarted || promptModal) {
+    if (!isPresentationStarted || isPreviewMode || promptModal) {
       return;
     }
 
@@ -945,7 +974,7 @@ export const ClientApp: React.FC = () => {
     }
 
     void playNarrationChunk(currentChunk, { reportError: true });
-  }, [currentChunk, isPresentationStarted, playNarrationChunk, promptModal]);
+  }, [currentChunk, isPresentationStarted, isPreviewMode, playNarrationChunk, promptModal]);
 
   async function ensurePresentationContext() {
     if (presentationContext) {
@@ -2375,6 +2404,9 @@ export const ClientApp: React.FC = () => {
       returnToWalkthrough();
       return;
     }
+    if (!ENABLE_LIVE_MIC_QUESTIONS) {
+      return;
+    }
     if (isMicOpen) {
       void handleCloseMic();
       return;
@@ -2403,12 +2435,15 @@ export const ClientApp: React.FC = () => {
         ? "Send question"
         : "Ask a question";
   const micHint = isPresentationStarted
-    ? isMicOpen
-      ? hasCapturedQuestion
-        ? "Question captured. Tap send when complete."
-        : "Speak now. Tap send when your question is complete."
-      : "Tap the mic to pause the narrator and ask one question."
+    ? !ENABLE_LIVE_MIC_QUESTIONS
+      ? "Prepared voice FAQs are available when the guide reaches the trial-stay close."
+      : isMicOpen
+        ? hasCapturedQuestion
+          ? "Question captured. Tap send when complete."
+          : "Speak now. Tap send when your question is complete."
+        : "Tap the mic to pause the narrator and ask one question."
     : "Step in when you are ready. The guide begins with sound, rain, and a little quiet.";
+  const shouldShowPrimaryAction = !isPresentationStarted || ENABLE_LIVE_MIC_QUESTIONS || isLiveFocus;
 
   const livePanelTitle = livePhase === "answering" || liveAnswerText
     ? "Response"
@@ -2568,37 +2603,39 @@ export const ClientApp: React.FC = () => {
                 "beforest-action-row",
                 isPresentationStarted ? "is-started" : "is-start",
               ].join(" ")}>
-                <button
-                  type="button"
-                  className={[
-                    "beforest-mic-button",
-                    isPresentationStarted ? "is-live" : "",
-                    isMicOpen ? "is-open" : "",
-                    isPreparing || livePhase === "connecting" ? "is-busy" : "",
-                    isBotSpeaking || livePhase === "answering" ? "is-speaking" : "",
-                  ].filter(Boolean).join(" ")}
-                  onPointerDown={handlePrimaryPointerDown}
-                  onClick={handlePrimaryAction}
-                  disabled={!canUsePrimaryAction}
-                  aria-label={actionLabel}
-                  aria-pressed={isMicOpen}
-                >
-                  <span className="beforest-mic-button__ring" aria-hidden="true" />
-                  <span className="beforest-mic-button__surface">
-                    {isPreparing || livePhase === "connecting" ? (
-                      <LoaderCircle size={24} className="spin" />
-                    ) : livePhase === "answering" ? (
-                      <Play size={24} />
-                    ) : !isPresentationStarted ? (
-                      <Play size={24} />
-                    ) : isMicOpen ? (
-                      <Send size={24} />
-                    ) : (
-                      <Mic size={24} />
-                    )}
-                  </span>
-                  <span className="beforest-action-label">{actionLabel}</span>
-                </button>
+                {shouldShowPrimaryAction ? (
+                  <button
+                    type="button"
+                    className={[
+                      "beforest-mic-button",
+                      isPresentationStarted ? "is-live" : "",
+                      isMicOpen ? "is-open" : "",
+                      isPreparing || livePhase === "connecting" ? "is-busy" : "",
+                      isBotSpeaking || livePhase === "answering" ? "is-speaking" : "",
+                    ].filter(Boolean).join(" ")}
+                    onPointerDown={handlePrimaryPointerDown}
+                    onClick={handlePrimaryAction}
+                    disabled={!canUsePrimaryAction}
+                    aria-label={actionLabel}
+                    aria-pressed={isMicOpen}
+                  >
+                    <span className="beforest-mic-button__ring" aria-hidden="true" />
+                    <span className="beforest-mic-button__surface">
+                      {isPreparing || livePhase === "connecting" ? (
+                        <LoaderCircle size={24} className="spin" />
+                      ) : livePhase === "answering" ? (
+                        <Play size={24} />
+                      ) : !isPresentationStarted ? (
+                        <Play size={24} />
+                      ) : isMicOpen ? (
+                        <Send size={24} />
+                      ) : (
+                        <Mic size={24} />
+                      )}
+                    </span>
+                    <span className="beforest-action-label">{actionLabel}</span>
+                  </button>
+                ) : null}
 
                 {isPresentationStarted && !isLiveFocus ? (
                   <button
@@ -2652,16 +2689,16 @@ export const ClientApp: React.FC = () => {
                 <a
                   className="beforest-cta-button"
                   href={TRIAL_STAY_URL}
-                  target="_blank"
-                  rel="noreferrer"
                   onClick={() => {
-                    trackAnalyticsEvent("interaction", "trial_stay_clicked", {
-                      url: TRIAL_STAY_URL,
-                    });
+                    if (!isPreviewMode) {
+                      trackAnalyticsEvent("interaction", "trial_stay_clicked", {
+                        url: TRIAL_STAY_URL,
+                      });
+                    }
                     pauseWalkthroughMedia();
                   }}
                 >
-                  Take a trial stay
+                  Begin Trial Stay
                 </a>
                 <button type="button" className="beforest-cta-button secondary" onClick={openSubscribeFlow}>
                   Subscribe for updates

@@ -180,7 +180,7 @@ How to use the agenda:
 
 CTA rules:
 - The trial stay at Blyton Bungalow is the pilot, not the backup option.
-- The main path is to take a trial stay at Blyton Bungalow: https://hospitality.beforest.co
+- The main path is to begin a trial stay at Blyton Bungalow: https://10percent.beforest.co/?trial=booking
 - The softer path is to subscribe or read more updates through the Founding Silence page: https://10percent.beforest.co/the-founding-silence
 - Full 10% membership should be framed as limited, serious, and not guaranteed for the masses.
 - End with conviction, not pressure.

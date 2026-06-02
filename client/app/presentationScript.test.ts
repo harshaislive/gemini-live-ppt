@@ -86,7 +86,7 @@ describe("subtitle cue timing", () => {
 
 describe("prompt answer routing", () => {
   it("routes final next-step answers into deterministic actions", () => {
-    expect(getPromptAnswerAction("next-step", "Take the trial stay")).toBe("show_trial_cta");
+    expect(getPromptAnswerAction("next-step", "Begin Trial Stay")).toBe("show_trial_cta");
     expect(getPromptAnswerAction("next-step", "Receive more updates")).toBe("open_updates");
     expect(getPromptAnswerAction("next-step", "Understand membership")).toBe("replay_membership");
     expect(getPromptAnswerAction("next-step", "Not right now")).toBe("soft_close");

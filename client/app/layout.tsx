@@ -67,6 +67,12 @@ export const metadata: Metadata = {
         type: "image/png",
       },
     ],
+    shortcut: [
+      {
+        url: "/favicon.png",
+        type: "image/png",
+      },
+    ],
   },
   openGraph: {
     title: pageTitle,

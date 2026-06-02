@@ -188,7 +188,7 @@ Function:
 
 CTA:
 - `Start your trial`
-- `https://hospitality.beforest.co`
+- `https://10percent.beforest.co/?trial=booking`
 
 CTA framing:
 - Blyton Bungalow is the pilot

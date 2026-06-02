@@ -54,4 +54,4 @@ The 10% Lifestyle membership by Beforest gives access, not ownership. It is fram
 - Email: hello@beforest.co
 - Website: beforest.co
 - WhatsApp: +91 89779 45351
-- Trial stay booking: hospitality.beforest.co
+- Trial stay booking: https://10percent.beforest.co/?trial=booking

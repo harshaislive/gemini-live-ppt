@@ -122,7 +122,7 @@ The product includes a very important first-step model:
 - Email: `hello@beforest.co`
 - Website: `beforest.co`
 - WhatsApp: `+91 89779 45351`
-- Trial stay booking: `https://hospitality.beforest.co`
+- Trial stay booking: `https://10percent.beforest.co/?trial=booking`
 
 ## One-paragraph summary
 

@@ -254,7 +254,7 @@ export const NARRATION_GATES: NarrationGate[] = [
     question: "What feels like the right next step?",
     context: "The presentation can close toward action, updates, or structure depending on where you are.",
     options: [
-      "Take the trial stay",
+      "Begin Trial Stay",
       "Receive more updates",
       "Understand membership",
       "Not right now",

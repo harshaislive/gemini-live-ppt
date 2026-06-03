@@ -1089,6 +1089,13 @@ export const ClientApp: React.FC<ClientAppProps> = ({ previewChunkId }) => {
       setPromptModal(null);
       trackAnalyticsEvent("interaction", "presentation_started", {
         backgroundVideoUrl: activeBackgroundVideoUrl,
+        liveMicQuestionsEnabled: ENABLE_LIVE_MIC_QUESTIONS,
+        preparedFaqsEnabled: true,
+        ...(!ENABLE_LIVE_MIC_QUESTIONS ? {
+          disabledCapability: "live_mic_questions",
+          disabledReason: "gemini_credentials_expired",
+          fallback: "prepared_voice_faqs",
+        } : {}),
       }, NARRATION_CHUNKS[0]);
       await initialAudioStart;
     } catch (error) {

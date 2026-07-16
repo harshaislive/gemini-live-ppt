@@ -739,7 +739,12 @@ export const ClientApp: React.FC<ClientAppProps> = ({ previewChunkId }) => {
         }
       }
 
-      const inviteToken = new URLSearchParams(window.location.search).get("invite")?.trim() || "";
+      const queryParams = new URLSearchParams(window.location.search);
+      const inviteToken = queryParams.get("invite")?.trim() || "";
+      const linkedPasscode = queryParams.get("pass")?.trim().slice(0, 64) || "";
+      if (linkedPasscode) {
+        setPasscode(linkedPasscode);
+      }
       const accessUrl = inviteToken
         ? `/api/access?invite=${encodeURIComponent(inviteToken)}`
         : "/api/access";

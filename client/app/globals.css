@@ -55,6 +55,296 @@ button {
   cursor: pointer;
 }
 
+.invite-creator-shell {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 32px 20px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(184, 220, 153, 0.13), transparent 36rem),
+    radial-gradient(circle at 100% 100%, rgba(255, 192, 131, 0.14), transparent 34rem),
+    var(--background);
+}
+
+.invite-creator-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.024) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 96px 96px;
+}
+
+.invite-creator-panel {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 720px);
+  padding: clamp(26px, 5vw, 52px);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: rgba(52, 46, 41, 0.94);
+  box-shadow: var(--shadow-deep);
+}
+
+.invite-creator-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--line);
+}
+
+.invite-creator-brand {
+  color: var(--sand);
+  font-size: 0.76rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.invite-creator-header p {
+  margin: 0;
+  color: var(--foreground-faint);
+  font-size: 0.82rem;
+}
+
+.invite-creator-intro {
+  padding: 42px 0 34px;
+}
+
+.invite-creator-intro h1 {
+  max-width: 590px;
+  margin: 0;
+  font-family: var(--font-arizona-flare), Georgia, serif;
+  font-size: clamp(2.15rem, 6vw, 4rem);
+  font-weight: 300;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
+}
+
+.invite-creator-intro p {
+  max-width: 520px;
+  margin: 22px 0 0;
+  color: var(--foreground-soft);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.invite-creator-form,
+.invite-creator-result {
+  display: grid;
+  gap: 20px;
+}
+
+.invite-creator-form label {
+  display: grid;
+  gap: 9px;
+  color: var(--foreground-soft);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
+.invite-creator-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.invite-creator-form input {
+  width: 100%;
+  min-height: 54px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  outline: none;
+  background: rgba(253, 251, 247, 0.055);
+  color: var(--foreground);
+  font-size: 1rem;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.invite-creator-form input::placeholder {
+  color: var(--foreground-faint);
+}
+
+.invite-creator-form input:focus {
+  border-color: var(--line-strong);
+  background: rgba(253, 251, 247, 0.08);
+}
+
+.invite-creator-policy {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.invite-creator-policy span {
+  padding: 8px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--foreground-soft);
+  font-size: 0.76rem;
+}
+
+.invite-creator-primary,
+.invite-creator-secondary,
+.invite-creator-link button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 52px;
+  border-radius: 13px;
+  font-size: 0.94rem;
+  transition: transform 160ms ease, background 160ms ease, opacity 160ms ease;
+}
+
+.invite-creator-primary {
+  width: 100%;
+  border: 1px solid var(--sand);
+  background: var(--sand);
+  color: #342e29;
+}
+
+.invite-creator-primary:hover,
+.invite-creator-link button:hover {
+  transform: translateY(-1px);
+}
+
+.invite-creator-primary:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.invite-creator-status,
+.invite-creator-error {
+  margin: 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.invite-creator-status {
+  border: 1px solid var(--line);
+  color: var(--foreground-soft);
+}
+
+.invite-creator-error {
+  border: 1px solid rgba(255, 135, 126, 0.35);
+  background: rgba(134, 49, 43, 0.2);
+  color: #ffd1cb;
+}
+
+.invite-creator-result {
+  grid-template-columns: auto 1fr;
+  align-items: start;
+}
+
+.invite-creator-success-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: var(--sage);
+  color: var(--forest);
+}
+
+.invite-creator-result h2 {
+  margin: 0;
+  font-family: var(--font-arizona-flare), Georgia, serif;
+  font-size: 2rem;
+  font-weight: 300;
+}
+
+.invite-creator-result p {
+  margin: 8px 0 0;
+  color: var(--foreground-soft);
+  line-height: 1.55;
+}
+
+.invite-creator-link {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 15px;
+  background: rgba(253, 251, 247, 0.045);
+}
+
+.invite-creator-link span {
+  min-width: 0;
+  align-self: center;
+  padding: 0 8px;
+  overflow: hidden;
+  color: var(--foreground-soft);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invite-creator-link button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--sand);
+  background: var(--sand);
+  color: #342e29;
+}
+
+.invite-creator-secondary {
+  grid-column: 1 / -1;
+  justify-self: start;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground-soft);
+}
+
+.invite-creator-result-error {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 620px) {
+  .invite-creator-shell {
+    align-items: start;
+    padding: 12px;
+  }
+
+  .invite-creator-panel {
+    min-height: calc(100dvh - 24px);
+    border-radius: 20px;
+  }
+
+  .invite-creator-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .invite-creator-intro {
+    padding: 34px 0 28px;
+  }
+
+  .invite-creator-field-row,
+  .invite-creator-link {
+    grid-template-columns: 1fr;
+  }
+
+  .invite-creator-link span {
+    padding: 8px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid rgba(213, 177, 138, 0.72);

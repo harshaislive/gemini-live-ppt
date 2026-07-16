@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { getServerEnv } from "./server-env";
-import { selectSupabaseRows, updateSupabaseRows } from "./supabase-rest";
+import { insertSupabaseRows, selectSupabaseRows, updateSupabaseRows } from "./supabase-rest";
 
 export type InviteIdentity = {
   inviteId: string;
@@ -36,12 +36,75 @@ function getInvitePepper() {
     || "";
 }
 
-function hashInviteSecret(value: string) {
+export function hashInviteSecret(value: string) {
   const pepper = getInvitePepper();
   if (!pepper) {
     return "";
   }
   return createHash("sha256").update(`${pepper}:${value.trim()}`).digest("hex");
+}
+
+export type CreateSalesInviteInput = {
+  inviteeName: string;
+  inviteeEmail: string;
+  inviteePhone: string;
+  campaign: string;
+  source: string;
+  maxUses: number;
+  expiresAt: string;
+  siteUrl: string;
+};
+
+export type CreatedSalesInvite = {
+  passcode: string;
+  inviteUrl: string;
+  expiresAt: string;
+  maxUses: number;
+};
+
+function makeNumericPasscode() {
+  return String(randomInt(100000, 1000000));
+}
+
+export async function createSalesInvite(input: CreateSalesInviteInput): Promise<CreatedSalesInvite> {
+  const tableName = getInvitesTable();
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const passcode = makeNumericPasscode();
+    try {
+      const result = await insertSupabaseRows(tableName, {
+        code_hash: hashInviteSecret(passcode),
+        code_last4: passcode.slice(-4),
+        invitee_name: input.inviteeName,
+        invitee_email: input.inviteeEmail.toLowerCase(),
+        invitee_phone: input.inviteePhone,
+        campaign: input.campaign,
+        source: input.source,
+        max_uses: input.maxUses,
+        expires_at: input.expiresAt,
+      });
+      if (!result.captured) {
+        throw new Error("Supabase invite storage is not configured.");
+      }
+
+      const inviteUrl = new URL("/", input.siteUrl);
+      inviteUrl.searchParams.set("pass", passcode);
+      return {
+        passcode,
+        inviteUrl: inviteUrl.toString(),
+        expiresAt: input.expiresAt,
+        maxUses: input.maxUses,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("409") && attempt < 4) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("Could not generate a unique passcode. Please try again.");
 }
 
 function toInviteIdentity(row: InviteRow): InviteIdentity {

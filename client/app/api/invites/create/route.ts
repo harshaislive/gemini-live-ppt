@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { hasInviteCreatorSession, isSameOriginRequest } from "@/lib/invite-creator-auth";
+import { isSameOriginRequest } from "@/lib/invite-creator-auth";
 import { parseInviteCreatorConfig } from "@/lib/invite-creator-config";
 import { createSalesInvite } from "@/lib/invites";
 import { getServerEnv } from "@/lib/server-env";
@@ -9,8 +9,8 @@ function clean(value: unknown, maxLength: number) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSameOriginRequest(request) || !hasInviteCreatorSession(request)) {
-    return NextResponse.json({ error: "Open the private creator link again." }, { status: 401 });
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: "Invalid request origin." }, { status: 403 });
   }
 
   const body = await request.json().catch(() => ({}));

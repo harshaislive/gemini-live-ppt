@@ -11,8 +11,6 @@ type CreatedInvite = {
   maxUses: number;
 };
 
-type AuthorizationState = "checking" | "authorized" | "unauthorized";
-
 const EMPTY_FORM = { inviteeName: "", inviteeEmail: "", inviteePhone: "" };
 
 function getDefaultExpiryDate(expiryDays = 14) {
@@ -50,7 +48,6 @@ async function copyText(value: string) {
 }
 
 export function InviteCreator() {
-  const [authorization, setAuthorization] = useState<AuthorizationState>("checking");
   const [maxUses, setMaxUses] = useState(5);
   const [expiryDate, setExpiryDate] = useState(() => getDefaultExpiryDate());
   const [campaign, setCampaign] = useState("sales");
@@ -71,28 +68,6 @@ export function InviteCreator() {
     setExpiryDate(getDefaultExpiryDate(parsedConfig.expiryDays));
     setCampaign(parsedConfig.campaign);
 
-    const key = params.get("key")?.trim() || "";
-    fetch("/api/invites/creator-session", key ? {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key }),
-    } : { cache: "no-store" })
-      .then(async (response) => {
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.authorized) {
-          throw new Error(String(data.error || "Open the private sales invite link to use this page."));
-        }
-        if (key) {
-          params.delete("key");
-          const cleanQuery = params.toString();
-          window.history.replaceState({}, "", `${window.location.pathname}${cleanQuery ? `?${cleanQuery}` : ""}`);
-        }
-        setAuthorization("authorized");
-      })
-      .catch((sessionError) => {
-        setAuthorization("unauthorized");
-        setError(sessionError instanceof Error ? sessionError.message : "This creator link is not valid.");
-      });
   }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -158,15 +133,7 @@ export function InviteCreator() {
           <p>Enter the recipient details. Their passcode and ready-to-send link will be generated instantly.</p>
         </div>
 
-        {authorization === "checking" ? (
-          <p className="invite-creator-status" role="status">Opening the invite generator…</p>
-        ) : null}
-
-        {authorization === "unauthorized" ? (
-          <p className="invite-creator-error" role="alert">{error}</p>
-        ) : null}
-
-        {authorization === "authorized" && !createdInvite ? (
+        {!createdInvite ? (
           <form className="invite-creator-form" onSubmit={handleSubmit}>
             <label>
               Recipient name
@@ -243,7 +210,7 @@ export function InviteCreator() {
           </form>
         ) : null}
 
-        {authorization === "authorized" && createdInvite ? (
+        {createdInvite ? (
           <div className="invite-creator-result" aria-live="polite">
             <div className="invite-creator-success-icon" aria-hidden="true"><Check size={22} /></div>
             <div>

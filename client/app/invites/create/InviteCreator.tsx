@@ -2,7 +2,7 @@
 
 import { Check, Copy, Link2, RotateCcw } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { parseInviteCreatorConfig, type InviteCreatorConfig } from "@/lib/invite-creator-config";
+import { parseInviteCreatorConfig } from "@/lib/invite-creator-config";
 
 type CreatedInvite = {
   passcode: string;
@@ -14,6 +14,20 @@ type CreatedInvite = {
 type AuthorizationState = "checking" | "authorized" | "unauthorized";
 
 const EMPTY_FORM = { inviteeName: "", inviteeEmail: "", inviteePhone: "" };
+
+function getDefaultExpiryDate(expiryDays = 14) {
+  const date = new Date();
+  date.setDate(date.getDate() + expiryDays);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getEndOfLocalDayIso(dateValue: string) {
+  const [year, month, day] = dateValue.split("-").map(Number);
+  return new Date(year, month - 1, day, 23, 59, 59, 999).toISOString();
+}
 
 async function copyText(value: string) {
   try {
@@ -37,7 +51,9 @@ async function copyText(value: string) {
 
 export function InviteCreator() {
   const [authorization, setAuthorization] = useState<AuthorizationState>("checking");
-  const [config, setConfig] = useState<InviteCreatorConfig>({ maxUses: 5, expiryDays: 14, campaign: "sales" });
+  const [maxUses, setMaxUses] = useState(5);
+  const [expiryDate, setExpiryDate] = useState(() => getDefaultExpiryDate());
+  const [campaign, setCampaign] = useState("sales");
   const [form, setForm] = useState(EMPTY_FORM);
   const [createdInvite, setCreatedInvite] = useState<CreatedInvite | null>(null);
   const [error, setError] = useState("");
@@ -51,7 +67,9 @@ export function InviteCreator() {
       expires: params.get("expires"),
       campaign: params.get("campaign"),
     });
-    setConfig(parsedConfig);
+    setMaxUses(parsedConfig.maxUses);
+    setExpiryDate(getDefaultExpiryDate(parsedConfig.expiryDays));
+    setCampaign(parsedConfig.campaign);
 
     const key = params.get("key")?.trim() || "";
     fetch("/api/invites/creator-session", key ? {
@@ -88,9 +106,9 @@ export function InviteCreator() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
-          maxUses: config.maxUses,
-          expiryDays: config.expiryDays,
-          campaign: config.campaign,
+          maxUses,
+          expiresAt: getEndOfLocalDayIso(expiryDate),
+          campaign,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -184,10 +202,37 @@ export function InviteCreator() {
               </label>
             </div>
 
-            <div className="invite-creator-policy" aria-label="Invite settings">
-              <span>{config.maxUses} opens</span>
-              <span>Expires in {config.expiryDays} days</span>
-              <span>{config.campaign}</span>
+            <div className="invite-creator-settings-row" aria-label="Invite settings">
+              <label>
+                Expiry date
+                <input
+                  required
+                  type="date"
+                  value={expiryDate}
+                  min={getDefaultExpiryDate(1)}
+                  onChange={(event) => setExpiryDate(event.target.value)}
+                />
+              </label>
+              <label>
+                Allowed opens
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  max="50"
+                  value={maxUses}
+                  onChange={(event) => setMaxUses(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                Campaign
+                <input
+                  required
+                  value={campaign}
+                  onChange={(event) => setCampaign(event.target.value)}
+                  placeholder="sales"
+                />
+              </label>
             </div>
 
             {error ? <p className="invite-creator-error" role="alert">{error}</p> : null}

@@ -48,10 +48,10 @@ Open `http://localhost:3000` and click **Begin walkthrough**.
 Set `INVITE_CREATOR_KEY` to a long private value in the server environment. Sales can then open:
 
 ```text
-https://live.10percent.beforest.co/invites/create?key=YOUR_PRIVATE_KEY&uses=5&expires=14d&campaign=sales
+https://live.10percent.beforest.co/create-link?key=YOUR_PRIVATE_KEY
 ```
 
-The page collects the recipient's name plus an email or phone number, creates a six-digit passcode, and returns a copy-ready presentation link. `uses`, `expires`, and `campaign` are controlled by the creator URL rather than editable fields on the page. The private key is exchanged for a 12-hour secure cookie and removed from the address bar after the page opens.
+The page collects the recipient's name plus an email or phone number, expiry date, allowed opens, and campaign. It creates a six-digit passcode and returns a copy-ready presentation link. Defaults are five opens and 14 days. The private key is exchanged for a 12-hour secure cookie and removed from the address bar after the page opens.
 
 ## Narration assets
 The release path uses checked-in audio snippets from `client/public/audio/narration`, driven by metadata in `client/app/presentationScript.ts`.

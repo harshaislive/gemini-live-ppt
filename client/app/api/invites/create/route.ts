@@ -26,10 +26,15 @@ export async function POST(request: NextRequest) {
 
   const config = parseInviteCreatorConfig({
     uses: clean(body?.maxUses, 4),
-    expires: clean(body?.expiryDays, 4),
     campaign: clean(body?.campaign, 80),
   });
-  const expiresAt = new Date(Date.now() + config.expiryDays * 24 * 60 * 60 * 1000).toISOString();
+  const submittedExpiresAt = clean(body?.expiresAt, 40);
+  const expiresAtMs = Date.parse(submittedExpiresAt);
+  const maxExpiryMs = Date.now() + 365 * 24 * 60 * 60 * 1000;
+  if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now() || expiresAtMs > maxExpiryMs) {
+    return NextResponse.json({ error: "Choose an expiry date within the next year." }, { status: 400 });
+  }
+  const expiresAt = new Date(expiresAtMs).toISOString();
   const configuredSiteUrl = getServerEnv("NEXT_PUBLIC_SITE_URL")?.trim();
   const requestSiteUrl = `${request.nextUrl.protocol}//${request.headers.get("x-forwarded-host") || request.nextUrl.host}`;
 

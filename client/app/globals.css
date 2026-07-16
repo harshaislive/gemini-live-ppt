@@ -83,7 +83,7 @@ button {
   position: relative;
   z-index: 1;
   width: min(100%, 720px);
-  padding: clamp(26px, 5vw, 52px);
+  padding: clamp(24px, 4vw, 42px);
   border: 1px solid var(--line);
   border-radius: 28px;
   background: rgba(52, 46, 41, 0.94);
@@ -95,7 +95,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 28px;
+  padding-bottom: 20px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -113,14 +113,14 @@ button {
 }
 
 .invite-creator-intro {
-  padding: 42px 0 34px;
+  padding: 30px 0 24px;
 }
 
 .invite-creator-intro h1 {
   max-width: 590px;
   margin: 0;
   font-family: var(--font-arizona-flare), Georgia, serif;
-  font-size: clamp(2.15rem, 6vw, 4rem);
+  font-size: clamp(2.15rem, 5.5vw, 3.6rem);
   font-weight: 300;
   line-height: 0.98;
   letter-spacing: -0.035em;
@@ -137,7 +137,7 @@ button {
 .invite-creator-form,
 .invite-creator-result {
   display: grid;
-  gap: 20px;
+  gap: 16px;
 }
 
 .invite-creator-form label {
@@ -154,9 +154,19 @@ button {
   gap: 16px;
 }
 
+.invite-creator-settings-row {
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr 1fr;
+  gap: 16px;
+}
+
+.invite-creator-form input[type="date"] {
+  color-scheme: dark;
+}
+
 .invite-creator-form input {
   width: 100%;
-  min-height: 54px;
+  min-height: 50px;
   padding: 0 16px;
   border: 1px solid var(--line);
   border-radius: 13px;
@@ -334,6 +344,7 @@ button {
   }
 
   .invite-creator-field-row,
+  .invite-creator-settings-row,
   .invite-creator-link {
     grid-template-columns: 1fr;
   }
